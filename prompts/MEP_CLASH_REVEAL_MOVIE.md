@@ -4492,3 +4492,27 @@ at 2. **Reuse these four constants and this shape verbatim — do not invent a s
   `skippedOverlap` — the count clash already reports.
 - **K6 NOFIT-IS-GONE** — the NOFIT branch no longer exists; a short/absent window is not a failure
   state any more. Proves §59.8 was retired deliberately rather than left dead.
+
+**70.6 ⛔ REGRESSION FOUND ON THE FIRST REAL BAKE — §RULE_TINT_SHOW_ONLY.** §70 shipped, baked
+(`out/HHS_clashmodel_854x480.mp4`, 1957 frames, 924s, `unconverged=0`, `fileOk=true`) and the log was
+everything §70 promised: `§RULE_FILM marked=215`, `§RULE_TINT_ENTER elements=214 colors=2
+guidsAsked=215 meshesHidden=0 shineThrough=true renderOrder=900 depthTest=false`,
+`§RULE_FILM_LABELS marks=215 eligible=8 labelled=2 skippedOverlap=6`. **The frames are unusable.**
+At t=48s and t=92s the view is a web of wireframe boxes edge to edge.
+
+**The difference from clash that §70.2 missed:** a clash marker is a small CONTACT box; a Sanity
+marker is a whole-element or whole-ROOM bbox — 71 of HHS's 215 are rooms (`§RULE_TINT_ROOM_GEOM n=71`),
+each metres across. 215 of those with `depthTest:false` is a full-screen mesh. "Mark everything, all
+film" is correct for clash's geometry and wrong for this one. Copying the model was right; copying it
+without checking that the marker SHAPE transfers was not.
+
+**THE FIX — markers follow the same ranking the labels already use.** `A.ruleTintShowOnly(guidSet)`
+(`rule_checklist.js`) scales non-ranked instances to zero; the composite hands it the eligible set each
+frame. Nothing is rebuilt — same mesh, same material, same instance count, ~215 matrix writes a frame.
+`§RULE_FILM_LABELS` now also reports `markersShown=N/total`. The 2-finding cap stays dead: over a film
+every finding can take its turn, but only the nearest few are drawn at once.
+
+**70.7 TESTS.** **K7** (20 findings against `TOP_N = 8`) asserts markers narrow to at most 8, and
+**K7c** that the NEAREST are the ones kept. **K7's first draft used the 5-finding fixture and passed
+without narrowing anything** — 5 is under the cap, so it proved nothing. Same vacuous-pass trap §66's
+C3 fell into; a check must reach the behaviour it names. **19/19** after the fix.
