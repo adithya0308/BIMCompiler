@@ -4516,3 +4516,35 @@ every finding can take its turn, but only the nearest few are drawn at once.
 **K7c** that the NEAREST are the ones kept. **K7's first draft used the 5-finding fixture and passed
 without narrowing anything** — 5 is under the cap, so it proved nothing. Same vacuous-pass trap §66's
 C3 fell into; a check must reach the behaviour it names. **19/19** after the fix.
+
+### 71. SPEC (2026-09-11) — §RULE_FILM_VISIBLE_FIRST + §RULE_TINT_ROOM_ANCHOR: two faults §70.6 left
+§70.6 fixed the marker flood in aggregate (8-12 shown of 215, confirmed in
+`out/HHS_final_854x480.log`). Two faults it did NOT fix, both measured on that same bake:
+
+**71.1 THE FILM IS SILENT FOR 57% OF ITS LENGTH.** `§RULE_FILM_LABELS` across the film:
+`labelled=0` on **75 of 131** film seconds, with `skippedFrustum=8..12` on those seconds. The eight
+slots were being spent on the nearest findings whether or not any of them was on screen — indoors they
+routinely all sit behind the camera, so 215 marked findings produced nothing at all for over half the
+film. **Cause: ranking order.** Clash ranks by distance and frustum-tests afterwards, which is right
+for clash because a clash contact is a POINT, so "nearest" is a good proxy for "visible". These markers
+are elements and rooms and that proxy does not hold.
+**Fix: frustum-test BEFORE the cap** — project everything, keep what is on screen, then take the
+nearest TOP_N of those. TOP_N, `RANK_MARGIN_M` hysteresis, `FADE_S` and the overlap walk are all
+unchanged; only the order changes. The projection is now done once per marker per frame and reused by
+the draw loop instead of being repeated there.
+
+**71.2 A ROOM'S MARKER WRAPS THE CAMERA.** At `t=48s` the camera is inside a room and that room's own
+bounding-box wireframe fills the frame. 71 of HHS's 215 findings are rooms (`§RULE_TINT_ROOM_GEOM
+n=71`, §67) and a room bbox is a REGION metres across, not a thing — at close range its outline is the
+whole view, and "nearest 8" indoors means standing inside several of them at once.
+**Fix: a room is marked by a POINT, not by its extent** — a fixed `ROOM_ANCHOR_M = 1.2` m anchor cube
+at the room centre. Real ELEMENTS keep their true bbox, because for those the outline is the useful
+information. The room/element distinction is already known at resolve time (§67 reads rooms from
+`spatial_structure`), so it is tagged there rather than guessed from size.
+
+**71.3 TESTS.**
+- **V1** — 3 findings very near but BEHIND the camera, 3 far but in front: the behind ones never take
+  a slot. Fails pre-fix, where all 6 were admitted.
+- **V2** — the far-but-visible findings get the slots and are labelled.
+- `tests/test_rule_mode_tint.js` continues to cover the two-table resolution the room tag rides on.
+**21/21. Falsified against the pre-fix file: V1 admits all 6, V2 shows 6 of 3 visible.**
