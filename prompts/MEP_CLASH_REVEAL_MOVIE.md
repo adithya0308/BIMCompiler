@@ -4548,3 +4548,29 @@ information. The room/element distinction is already known at resolve time (§67
 - **V2** — the far-but-visible findings get the slots and are labelled.
 - `tests/test_rule_mode_tint.js` continues to cover the two-table resolution the room tag rides on.
 **21/21. Falsified against the pre-fix file: V1 admits all 6, V2 shows 6 of 3 visible.**
+
+### 72. ⛔ REGRESSION (2026-09-11) — §RULE_FILM_MEASURE_ECHO: §70 silently dropped the Measure box
+**User: "the Measure box will append the message of the appearing Sanity item also right?"** It did
+not. `grep filmBoxesMeasurePost viewer/rule_findings_film.js` → nothing.
+
+**What happened.** §70 replaced `ruleFindingsFilmCompositeOntoCanvas` wholesale: the old body posted
+the storey-slot picks into the Measure box, the new body draws floating labels. The posting call went
+with the old body and nothing replaced it, so after §70 the Measure box received no Sanity entry at
+all. **This contradicted a standing instruction** the user had given hours earlier — "Sanity messages
+are to append to that [the Measure box]" (§61-era discussion) — and no test covered it, because the
+witness checks written for §70 all describe the new label pass.
+
+**Fix.** The NEAREST labelled finding each frame is echoed to `A.filmBoxesMeasurePost(title, rows, ink)`.
+Only the first: the box shows one entry at a time (§14 slot collision), and `elig` is distance-sorted,
+so the echo is the nearest visible finding rather than an arbitrary one. `§RULE_FILM_LABELS` now also
+reports `measureEcho=yes|no`, so a bake log says whether the box was fed.
+
+**72.1 LESSON — a wholesale rewrite drops requirements that no test names.** §70 was specified,
+witnessed 16/16, falsified, and still lost a feature the user had explicitly asked for, because every
+check written for it described the NEW behaviour and none asserted the OLD contract still held. When
+replacing a function body rather than editing it, enumerate what the old body did and assert each item
+still happens. M1-M3 now do that for this one.
+
+**72.2 TESTS.** **M1** the Measure box receives a Sanity entry when one is on screen (fails against
+§70/§71 — no post at all). **M2** exactly one per frame, and it is the nearest. **M3** the echoed
+entry carries its category ink so §68's colours still apply. **24/24.**
