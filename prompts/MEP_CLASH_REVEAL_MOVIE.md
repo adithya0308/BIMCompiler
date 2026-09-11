@@ -4373,3 +4373,43 @@ it without THREE.
 **23/23 (was 18/18). Falsified against the pre-change file: `ruleTintRowsFor` does not exist there and
 the run aborts.** Sibling suites unchanged: `witness_rule_findings_film.js` 35/35,
 `witness_film_boxes.js` 14/14.
+
+### 68. SPEC (2026-09-11) — §HUD_LEGIBLE: stop judging legibility by eye, measure it
+**User: "I can't understand your words as usual on the coloring. Just make sure everything is
+legible."** Colour was explained three times this session and got it wrong three times (§61 blamed the
+hue, §64 found the real same-hue plate fill, §65 matched the plate). The failure was METHOD: legibility
+was being argued about instead of measured. §68 replaces the argument with a number and a test.
+
+**68.1 THE MEASUREMENT.** WCAG 2.1 contrast ≥ 4.5:1, computed on the ACTUAL composite — the plate is
+black at its alpha over the scene, the text composites onto that plate, and the ratio is text-against-
+plate. Two backdrops, because a film frame spans both: a night ground (`#101010`) and a sunlit white
+facade / sky (`#e8e8e8`).
+
+**68.2 THE RESULT — EVERY ink failed, and the bright scene is why.** At the shipped plate (0.45 flat /
+0.28 frosted) the worst-case ratios were: Measure title 1.97, Structural 2.08, Safety **1.19**, body
+rows 3.95, card label 3.47, card sub-text 2.46 — **all six under 4.5**. The plate is translucent, so a
+bright facade behind it stays bright and every ink sits on a light ground. This is exactly the case
+eyeballing a few dark frames could never catch, and the reason §61/§64/§65 each fixed something real
+and still left the HUD unreadable in bright passages.
+
+**68.3 SAFETY RED CANNOT BE SAVED BY DARKENING THE PLATE.** `#cc4444` was swept against plate alphas
+0.45→0.90 and fails at every one (1.19 → 3.82); at a fully opaque plate it still only reaches 4.42.
+It is too dark to be text on any HUD. Changed to **`#e57373`** — same red family, lighter, 5.26:1.
+`#ffaa33` (Structural) passes unchanged. **The interactive Rule panel keeps `#cc4444`** — different
+surface, not part of this change.
+
+**68.4 WHAT SHIPS.** Plate alpha `0.28`/`0.45` → **`0.85`** (`A.cpePanelPlate`, and `cpe_film_boxes.js`'s
+matching fallback); egress ink `#cc4444` → `#e57373` (`rule_findings_film.js` CATEGORY_COLOR and the
+`cpe_resource_panel.js` safety card); card sub-text `rgba(255,255,255,0.60)` → `0.78`. Worst case now:
+title 7.84, Structural 8.27, Safety 5.26, rows 15.72, card label 12.48, card sub 10.09 — all clear.
+
+**68.5 TESTS — `witness_hud_legibility.js` (new).** Every value is SLICED OUT OF THE SOURCE FILES and
+evaluated, never re-typed, so retuning any colour or alpha re-runs this check automatically instead of
+silently dropping under the threshold.
+- **H1** — one check per ink (8 of them, including both plate paths), worst case across both scenes.
+- **H2** — the plate alpha tested is the one in the source.
+- **H3** — asserts the BRIGHT scene really is the limiting case for at least one ink, so the suite
+  cannot pass by only ever checking the easy direction. That is the specific blind spot of §61-§65.
+**10/10. Falsified: reverting only `rule_findings_film.js` puts `#cc4444` back and the run exits 1.**
+Sibling suites re-run and updated where they pinned an old value: `witness_rule_findings_film.js`
+35/35, `witness_film_boxes.js` 14/14 + block 10/10, `tests/test_rule_mode_tint.js` 23/23.
