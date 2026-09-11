@@ -4092,3 +4092,112 @@ not capture `fillStyle` per draw today; capturing it is an additive harness chan
 - **M2 CATEGORY-INK-STILL-OVERRIDES** — an entry posted WITH `#ffaa33` still draws `#ffaa33`, proving
   §61.3: the Sanity look is unchanged by the new default.
 - **M3 ROWS-STAY-WHITE** — the body rows remain `#fff`; only the title colour moved.
+
+### 62. SPEC (2026-09-11) — §RULE_TINT_SHINE_THROUGH: the Sanity 3D marker is occluded, opt-in fix
+**User: "hard to pick out Sanity occurrences, one was late show when storey reveal ended, but no
+highlight in the building where it's located. is it shine thru premeditated as it may be blocked by
+others? Similar to Clash marking, let it shine thru prior?" → "Yes Sanity shine thru if it's cheap."**
+
+**62.1 NOT premeditated — missed. Sanity is the one film marker that never got the treatment.**
+`§RULE_TINT_ENTER elements=2 colors=2` in the real HHS bake (`out/HHS_lingerfit2_854x480.log`) — it
+ran and marked both picks. It is invisible because of two lines in `viewer/rule_checklist.js`:
+- `:30` `RULE_TINT_MATERIAL_OPTS = { wireframe: true, transparent: true, opacity: 0.2, depthWrite: false }`
+  — **no `depthTest: false`**, so ordinary z-testing hides it behind any wall in front.
+- `:285` `iMesh.renderOrder = -1` — it draws BEFORE ordinary opaque geometry, so the building paints
+  over it even where it is not occluded. That is WORSE than plain depth-testing.
+
+**The working precedent is `clash_film.js:145-166` `§CLASH_FILM_SHINE_THROUGH`**, whose own comment
+describes this exact bug being fixed for clash markers: *"THE DEFECT: this material shipped with
+depthTest: true … the one line that actually does that work — depthTest — was left at its
+MeshBasicMaterial default-looking true instead."* Its fix, itself inherited from `measure.js:717-720`
+under the standing rule *"the blue/red shine-through already exists — retain it exactly, do not
+reinvent"*: `depthTest: false, depthWrite: false, toneMapped: false`, `renderOrder = 900`.
+
+**62.2 WHY THE BASE CONSTANT MUST NOT BE EDITED.** `tests/test_rule_mode_tint.js` (11/11, passing) is
+`prompts/STRUCTURAL_SANITY.md` T5's witness and asserts `RULE_TINT_MATERIAL_OPTS` **deep-equals Clash
+MODE's** material config (`measure.js A._enterClashMode`) — it even re-reads the literal out of
+`measure.js`. Clash MODE is the interactive browsing mode, where depth-testing is correct; clash FILM
+deliberately diverged. So this must be **opt-in at call time, not a change to the shared constant**:
+- `A.showRuleModeTint(guidSeverityMap, colorMap, opts)` gains a third argument. With
+  `opts.shineThrough` truthy it layers `depthTest: false, toneMapped: false` over the base opts and
+  uses `renderOrder = 900` (clash_film's exact value); otherwise behaviour is byte-identical to today,
+  `renderOrder = -1` included.
+- `viewer/rule_findings_film.js` — the ONLY caller in the repo — passes `{ shineThrough: true }`.
+  Interactive Rule Mode keeps Clash Mode's look and T5's contract holds untouched.
+- Expose the layering as a pure exported helper so Node can test it without THREE.
+
+**62.3 COST — the user's condition was "if it's cheap". It is: zero added cost.** No extra geometry,
+no extra instances, no extra draw calls, no new material per element — the same one
+`MeshBasicMaterial` per colour group gains two boolean flags, and an integer changes. Rendering with
+`depthTest:false` is not more expensive than with it on.
+
+**62.4 EXPLICITLY NOT IN SCOPE.** `opacity: 0.2` stays — raising it is a taste call and was not asked
+for; judge it on the next bake now that the marker is actually visible. `showRuleModeTint`'s hiding of
+the real mesh (`:250-251` `o.visible = false`) also stays: it is shared with interactive Rule Mode and
+changing it would alter an existing working feature. Neither is touched here.
+
+**62.5 TESTS.**
+- **T1 BASE-CONSTANT-UNTOUCHED** — extend `tests/test_rule_mode_tint.js`: with no opts, the layered
+  result still deep-equals Clash Mode's config and `renderOrder` is still `-1`. Proves T5 survives.
+- **T2 SHINE-THROUGH-LAYERS-DEPTHTEST** — with `{shineThrough:true}`: `depthTest === false`,
+  `toneMapped === false`, `renderOrder === 900`, and `wireframe/transparent/opacity/depthWrite` are
+  unchanged from the base. Fails pre-change.
+- **T3 FILM-ASKS-FOR-IT** — extend `witness_rule_findings_film.js`: the film's `showRuleModeTint` call
+  passes a third argument with `shineThrough: true`. Proves the caller opted in, not just that the
+  capability exists.
+
+### 63. SPEC (2026-09-11) — §RULE_FILM_MESSAGING: the Measure box says the wrong thing about its own numbers
+**User: "Focus on the HUD optics and messaging."** Optics is done (§61 title blue, §62 marker shines
+through). This is the messaging half. Two defects, both read straight off the real HHS bake log
+(`out/HHS_lingerfit2_854x480.log`), both objective — neither is a taste call:
+```
+§MEASURE_BOX title="Safety — door clear width" rows=3/3
+  [Drehflügel 1-flg - Stahlzarge:76 x 2.26:76 x 2.26:578641 · Level 2 · ratio 0.8]
+§MEASURE_BOX title="Structural — column continuity" rows=3/3
+  [STB Stütze - rund:STB d=30:STB d=30:573295 · Level 1 · CRITICAL]
+```
+
+**63.1 D1 — "ratio" is printed for three different quantities, two of which are metres.**
+`rule_findings_film.js:181` builds the value row as `'ratio ' + p.ratio.toFixed(1)` for every rule.
+But `ratio` is an overloaded field on the evaluator rows:
+- `egress_sanity.js:80` `ratio: width` — **metres** (door clear width)
+- `egress_sanity.js:116` `ratio: distance` — **metres** (circulation distance)
+- `structural_sanity.js:219` `ratio: ratio` — a genuine dimensionless span/depth **ratio**
+So the film told the viewer `ratio 0.8` about a door that is **0.80 m** of clear width. A reader has no
+way to recover the unit. It also misdescribes an extracted value, which the Prime Directive forbids
+just as much as inventing one.
+**The unit is already IN the rule definition and must be read from there, never from a hardcoded list
+of rule names:** `warning_m`/`critical_m` ⇒ metres, `warning_ratio`/`critical_ratio` ⇒ ratio. A rule
+carrying neither gets the bare number and NO unit word — never a guessed label.
+Format: metres `toFixed(2) + ' m'`, ratio `'ratio ' + toFixed(1)`. The quantity is already named by the
+title ("door clear width", "circulation distance"), so no new phrasing is invented here — only the unit.
+`ratio == null` keeps falling back to the severity word, unchanged: the box ink is the CATEGORY colour,
+not severity, so `CRITICAL` is the only place severity is stated and must stay.
+
+**63.2 D2 — the name row is mostly duplicated noise, and the box truncates away the useful half.**
+`element_name` follows the Revit export convention `family:type:type:id` — **5,303 of 6,880 rows (77%)**
+in `~/Downloads/HHS_Office_Federated_silent.db` match `%:%:%:%`, with the type segment repeated and a
+raw element id appended. At the Measure box's width that renders as
+`STB Stütze - rund:STB d=30:STB d...` — the reader sees one real word and then noise.
+**Deterministic trim, no lookup table, nothing invented:** split on `:`; drop any segment identical to
+the one before it; drop a trailing all-digits segment (only when something remains); join with ` · `.
+```
+Drehflügel 1-flg - Stahlzarge:76 x 2.26:76 x 2.26:578641  ->  Drehflügel 1-flg - Stahlzarge · 76 x 2.26
+STB Stütze - rund:STB d=30:STB d=30:573295                ->  STB Stütze - rund · STB d=30
+```
+Nothing identifying is lost: the guid is the identity and is already carried on the pick and logged.
+A name with no `:` is returned unchanged.
+
+**63.3 NOT IN SCOPE.** No re-wording of titles, no new rows, no reordering, no colour change. The three
+rows stay `name · storey · value`.
+
+**63.4 TESTS — extend `witness_rule_findings_film.js`.**
+- **G1 METRE-RULE-SAYS-METRES** — a `door_clear_width` pick (rule def carries `critical_m`) renders
+  `0.80 m`, not `ratio 0.8`. Fails pre-change.
+- **G2 RATIO-RULE-STILL-SAYS-RATIO** — a `span_depth_*` pick (`critical_ratio`) still renders
+  `ratio N.N`. Proves the fix did not simply relabel everything to metres.
+- **G3 UNKNOWN-UNIT-GETS-NO-LABEL** — a rule def carrying neither key renders the bare number with no
+  unit word. Proves the unit is read from the definition, not guessed.
+- **G4 NULL-RATIO-STILL-SHOWS-SEVERITY** — `column_continuity` still renders `CRITICAL` (§63.1).
+- **G5 NAME-TRIM-IS-LOSSLESS-AND-DETERMINISTIC** — the two real HHS strings above trim exactly as
+  shown; a name without `:` is unchanged; a name that is ONLY digits is not emptied.
