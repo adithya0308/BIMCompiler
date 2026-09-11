@@ -3879,3 +3879,41 @@ sanity cards). §59.6a's "with no flags at all, the saved path decides" holds, b
 saved path decides AGAINST Measure. Hospital's window is `windowSec=10.0` (vs HHS's 4.03) over 8 real
 levels (Level 1..7A; `Ceiling`/`TOS`/`Unknown` are not storeys) ≈ 1.25s/storey — predicted NOFIT
 pre-fix, `1.25 + 2.2 = 3.45s` admitted post-fix. That prediction is stated here BEFORE the bake.
+
+### 59.9 ⛔ CORRECTION to §59.6a (2026-09-11) — "the saved path decides" is FALSE for HHS, and the
+### "byte-identical, forced flags were redundant" claim in §59.6a is WRONG
+§59.6a told a future session that `--measure`/`--storey-reveal`/`--buildup` are "redundant, not wrong"
+because the saved `cinema_path` restores them, and that forcing them "produced byte-identical NOFIT
+results on the same building". **Acting on that advice broke a real verification bake.** The canonical
+bare invocation on HHS at 854x480@15 produced:
+```
+§CINEMA_PATH_RESTORE bands=4 total=61.0s holdCol=true holds=0 flagCol=false — §CPE_FLAGS_PORTABLE:
+  this .db predates the flag columns, so every film flag stays at its consumer default (all off)
+§MAXQ_OVERRIDE_IN source=db:cinema_path bands=4 hoseOps=0 buildup=0 roomTitle=0 reveal=0 durationSec=72.3
+§RULE_FILM_INIT wired ... (and then NOTHING — no §RULE_FILM_WINDOW, no §EGRESS, no §ROOM_GRAPH_EXITS)
+1085 frames, 467s wall, 17.8MB
+```
+against the same worktree's forced-flag run on the same DB:
+```
+§MAXQ_OVERRIDE_IN source=db:cinema_path bands=4 hoseOps=0 buildup=1 roomTitle=1 reveal=1 durationSec=130.4
+1957 frames, 905s wall
+```
+**`flagCol=false` is the load-bearing fact.** `~/Downloads/HHS_Office_Federated_silent.db` PREDATES the
+`cinema_path` flag columns, so `§CPE_FLAGS_PORTABLE` leaves every film flag at its consumer default —
+**all off**. Only the path SHAPE is restored, never the flags. On that DB the forced flags are not
+redundant: they are the only thing that turns Measure on, and §59 rides Measure, so without them §59
+never evaluates at all. The two runs are not byte-identical; they are 72.3s vs 130.4s of film.
+
+**Why §59.6a got it wrong:** it generalised `docs/BIMUserGuide.md`'s wording across the fleet without
+checking `flagCol` per DB. Both readings are true, of different buildings — `~/Downloads/
+Hospital_silent.db` DOES carry the columns (`buildup=1 roomTitle=1 reveal=1` restored from its own
+`cinema_path`), HHS does not.
+
+**RULE GOING FORWARD — check the DB, do not trust either blanket statement.** Before any verification
+bake, read the first `§CINEMA_PATH_RESTORE` line:
+- `flagCol=true` → the saved path decides; pass no flags (Hospital; still pass `--measure` when the
+  saved path has it off, per §59.8b).
+- `flagCol=false` → **every flag is off**; pass explicitly whatever the feature needs
+  (`--buildup --label --reveal --clash --measure --storey-reveal` for a §59 check). HHS.
+Cheapest pre-check, no GPU: `node cli_silent_bake.js --db <Name>_silent --opening-only` and read the
+restore line. **§59.6a's "passing the flags is redundant" sentence is retracted; do not follow it.**
