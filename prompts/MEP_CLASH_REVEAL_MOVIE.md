@@ -4329,3 +4329,47 @@ out to produce a VALID window, which never reaches the message at all — the ch
 nothing. The else branch runs on `_pbEnd <= _pbStart` while the ternary tests `_pbEnd < _pbStart`, so
 the only input that still reads `window-too-short` is an exactly-zero-width window, and C3 now
 constructs that precisely. A test that passes without reaching the code under test is not a test.
+
+### 67. SPEC (2026-09-11) — §RULE_TINT_ROOM_GEOM: room-based Safety findings were never marked in 3D
+**User, watching the Hospital film: "important is the Sanity feature but I can't pick out any item
+singled out on scene in hospital mp4."** Two independent causes, both confirmed from that bake's log.
+
+**67.1 CAUSE A — §62 is not in that film.** `out/Hospital_lingerfit2_854x480.mp4` began baking 15:20;
+§62 committed 15:29. Its log reads `§RULE_TINT_ENTER elements=1 colors=1` with no `shineThrough=`
+field, i.e. the pre-§62 material: `depthTest` on, `renderOrder -1`. Whatever marker was drawn was
+painted over by the building. Nothing to fix — that film simply predates the fix, and a rebake carries
+it.
+
+**67.2 CAUSE B — the egress marker was never drawn at all, and nothing said so. NEW DEFECT.**
+`§RULE_TINT_ENTER elements=1` against `§RULE_FILM picks=2`: one of the two picks produced no marker.
+`showRuleModeTint` resolved bboxes from `element_transforms` ONLY, and Hospital's egress pick was
+`Safety — isolated room ⚠ Level 2 R3`. Measured on `~/Downloads/Hospital_silent.db`:
+```
+spatial_structure WHERE guid LIKE 'RM_%'   -> 8
+element_transforms WHERE guid LIKE 'RM_%'  -> 0
+```
+Injected rooms (§ROOM_INJECTOR_NEEDLE, guid prefix `RM_`) live only in `spatial_structure`. **Both of
+egress's graph rules pick ROOMS** — `isolated_room` and `circulation_distance` — so every room-based
+Safety finding has always been dropped from the 3-D tint, and dropped SILENTLY: the resolver did
+`if (!row) return;` with no log. The count mismatch was the only trace and nothing drew attention to
+it. `door_clear_width` is the only egress rule that picks a real element, which is why HHS (12 door
+findings) appeared to work and Hospital (`door_clear_width severity=0`) did not.
+
+**67.3 THE FIX — look in both tables; name anything found in neither.** `spatial_structure` carries
+`center_x/y/z` + `size_x/y/z`, the same shape as `element_transforms`' `center_*` + `bbox_*`, so the
+room geometry is real and extracted — nothing is synthesised to fill a gap. Resolution is now:
+`element_transforms` first, then `spatial_structure` for whatever is still missing, logging
+`§RULE_TINT_ROOM_GEOM n=…`; anything resolving in neither is named in `§RULE_TINT_NO_GEOM` with its
+guids rather than vanishing. Extracted into the pure `ruleTintRowsFor(dbQuery, guids)` so Node can test
+it without THREE.
+
+**67.4 TESTS — extend `tests/test_rule_mode_tint.js` against the REAL `~/Downloads/Hospital_silent.db`.**
+- **R1-setup** — the chosen room guid really has zero `element_transforms` rows. States the premise
+  rather than assuming it; if this ever fails the rest proves nothing.
+- **R1 / R1b** — that room resolves a 7-column bbox row, with non-zero extents (geometry, not a
+  placeholder). Fails pre-change.
+- **R2** — a real IFC element still resolves from `element_transforms`; the main path is intact.
+- **R3** — a guid in neither table resolves nothing AND is reported.
+**23/23 (was 18/18). Falsified against the pre-change file: `ruleTintRowsFor` does not exist there and
+the run aborts.** Sibling suites unchanged: `witness_rule_findings_film.js` 35/35,
+`witness_film_boxes.js` 14/14.
