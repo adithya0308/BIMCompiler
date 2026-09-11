@@ -4824,6 +4824,11 @@ up:** Hospital is a 300MB DB / 64,150 elements; the spike is at load, not during
 immediately after each kill; HHS (80MB) never triggered it. Worth measuring peak RSS across the load
 phase before changing anything.
 
+**81.3b OPEN — §82 SET QUEUEING, found after §81 was written.** Baking a third building
+(`Terminal_silent.db`) put **7-8 set boxes on screen for 29 of ~53 seconds** — §77 solved per-element
+crowding and hit set-level crowding. §82 specs the fix (queue and stagger, 5s slots, earnest effort
+not a guarantee) and is NOT implemented. Start there: it is the only open item with a finished spec.
+
 **81.4 ALSO OPEN, smaller.** §66 HHS's clash pullback window is inverted (`reservation-exceeds-span`)
 so its disc-pair cards never draw — behaviour is correct, the film just loses that content on short
 films. §O.3 the HHS ceiling panel still appears ~49 project-days early (cause unattributed; the
