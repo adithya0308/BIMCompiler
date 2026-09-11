@@ -3917,3 +3917,138 @@ bake, read the first `§CINEMA_PATH_RESTORE` line:
   (`--buildup --label --reveal --clash --measure --storey-reveal` for a §59 check). HHS.
 Cheapest pre-check, no GPU: `node cli_silent_bake.js --db <Name>_silent --opening-only` and read the
 restore line. **§59.6a's "passing the flags is redundant" sentence is retracted; do not follow it.**
+
+### 60. ⛔ RESUME HERE (2026-09-11, session close) — STOREY-REVEAL HIGHLIGHTS "still not satisfactory",
+### turned into MEASURED defects on the freshest bake. Two shipped (both data/reporting), five left
+### for the user (all visual). Worktree `/tmp/wt-storey-reveal-list`, branch `fix/storey-reveal-list`
+### off `feat/rule-findings-film` @ `79696797`.
+**Source of every number below:** `/tmp/wt-rule-findings-film/out/HHS_lingerfit2_854x480.mp4` +
+`.log` (854×480@15fps, 130.47s, 1957 frames, `--gpu real`), and `~/Downloads/HHS_Office_Federated_
+silent.db` by direct `sqlite3`. The real window, from that run's OWN §-lines (never the probe's generic
+beat labels — §58.3's trap): `windowFrac=0.0309`, `orbitStartFrac=0.9099` ⇒ **114.69s → 118.72s, 4.03s,
+4 slots of 1.01s**, matching `§STOREY_REVEAL_FIT windowSec=4.03 ... slotSec=1.01`.
+
+**60.0 THE MEASUREMENT INSTRUMENT, reusable — per-frame tint-hue pixel coverage.** Classify every
+below-horizon, non-HUD pixel by hue against the four cycle colours and count per frame. This is the
+instrument §57.2/§58.3 kept asking for, in its cheapest form (no puppeteer, no GPU, ~10s to run):
+| storey | slot (film s) | peak tinted px on screen | measured band RGB | luma |
+|---|---|---|---|---|
+| Level 1 `#2979ff` blue | 114.69-115.70 | **≈228** (at sky-noise level) | (73,97,121) | 95 |
+| Level 2 `#00c853` green | 115.70-116.71 | **8,967** | **(0,33,13)** | **24** |
+| Level 3 `#ffd600` yellow | 116.71-117.72 | **7,203** | **(73,55,12)→(45,37,0)** | **56→38** |
+| Roof Level `#ff6d00` orange | 117.72-118.72 | **0, every frame** | — | — |
+Un-highlighted facade panels beside them measure ~200 luma. **So the "highlight" is, in every
+measured case, DARKER than the facade it is supposed to highlight.** That single fact is the honest
+answer to three sessions of "still not highlighting much to be seen" — the read is INVERTED, not weak.
+
+**60.1 ✅ SHIPPED — `A.storeyRevealList` admits a storey that is not a storey (OBJECTIVE DATA BUG).**
+`~/Downloads/HHS_Office_Federated_silent.db`: `spatial_structure` holds exactly **3** `IfcBuildingStorey`
+rows — `Level 1`, `Level 2`, `Level 3`. **`Roof Level` is not one of them.** It exists only as an
+`elements_meta.storey` string on 45 elements: 22 `IfcFlowSegment`, 10 `IfcFlowFitting`, 7 `IfcSlab`,
+5 `IfcBuildingElementProxy`, 1 `IfcEnergyConversionDevice` — **zero walls, zero doors, zero IfcSpace,
+no `storey_walkable_raster` row**. It is rooftop MEP, not an occupiable storey. §55.2's "the one correct
+VACUOUS left is HHS's Roof Level (0 walls — a roof genuinely has no walls, that is the right answer)"
+was half right: the 0 is correct, but the row should never have been a reveal slot at all.
+The bake's own agreeing lines: `§STOREY_REVEAL_LIST n=4 storeys=[Level 1,Level 2,Level 3,Roof Level]`
+· `§FACADE_ONLY_TINT storey="Roof Level" facadeWalls=0 (aabb=0 raster=0) — VACUOUS` ·
+`§STOREY_REVEAL_TINT storey="Roof Level" meshesTouched=0` · `§STOREY_REVEAL_STATS storey="Roof Level"
+doors=0 walkable=n/a rooms=0 (0 — VACUOUS)`. On screen, frames 117.72-118.72s: **zero tinted pixels,
+every frame**, under a card reading "0 · doors · Roof Level".
+**What it costs:** (a) 1.01s of a 4.03s window — **25%** — is a dead slot; (b) the three real storeys
+get 1.01s each instead of 1.34s (+33% dwell, free); (c) **§STOREY_REVEAL_LAST_STAYS_LIT is reduced to a
+no-op** — that fix exists precisely so the window does not end dark, and the storey it keeps lit lights
+nothing; (d) `rule_findings_film.js:118`'s `slotSec = winSec/list.length` rises 1.01→1.34s, so §59.8's
+`overrunSec = ENV_SPAN - slotSec` falls **1.19s → 0.86s** (-28% caption/tint desync, also free).
+**FIX (shipped):** intersect the list with the names `spatial_structure` itself calls
+`IfcBuildingStorey`. **DEGRADE, DON'T DISABLE** — a DB with no `IfcBuildingStorey` row at all keeps the
+pre-fix list byte-for-byte. The drop is logged, never silent.
+**Cross-building safety, checked before writing it:** `~/Downloads/Hospital_silent.db`'s
+`spatial_structure` carries 64 `IfcBuildingStorey` rows covering Level 1..7A (plus its own
+`Ceiling`/`TOS` pseudo-rows, which the existing `NOT LIKE '% Ceiling'/'% TOS'` filters already remove).
+Every storey Hospital shows today survives — **zero change on Hospital**, witnessed (S3).
+
+**60.2 ✅ SHIPPED — `§STOREY_REVEAL_WINDOW` reports a window 33% shorter than the one the film plays.**
+Same bake, two lines that disagree: `effects.js:8081` prints `windowSec=2.7 ... — last 2.7s of
+pullback`, `cpe_storey_reveal.js:144` prints `§STOREY_REVEAL_FIT windowSec=4.03`. `windowSec` there is
+in SHAPE seconds (`_useSec.rise`, denominator `_shapeTotal`≈87.4s); the film plays `windowFrac ×
+durationSec = 0.0309 × 130.47 = 4.03s`. The frames settle it: the on-screen slots measure 1.01s each
+(green 115.67-116.33, yellow 116.67-117.33) — 4.04s, not 2.7s. Under this project's Log Mandate that is
+a real defect: it is the first line a future session reads, and §59.6c already had to go find the FIT
+number instead. **FIX (shipped):** also print `realWindowSec` (and `realSlotSec` guidance) from
+`durationSec`, which is already in scope on the very next `console.log` (`effects.js:8096`).
+
+**60.3 ⛔ LEFT FOR THE USER — THE HEADLINE. The tint is emissive-only on a night facade whose albedo
+contributes nothing, so it renders at ~17-27% of nominal and always DARKER than what it highlights.**
+`cpe_storey_reveal.js:_applyTint` sets `cl.emissive.setHex(hex)` and nothing else — the clone's `color`/
+albedo is untouched. Measured proof it is emissive-only and linearly scaled: Level 2's band renders
+**(0,33,13)** against `#00c853 = (0,200,83)` — R exactly 0, G:B = 2.54 vs the source's 2.41, i.e. **the
+emissive colour at ≈0.165×**, with zero albedo contribution. Level 3: **(73,55,12)** against
+`#ffd600 = (255,214,0)` ⇒ ≈0.27×. At that scale `#2979ff = (41,121,255)` lands at ≈(8,24,51) — which is
+why **Level 1's blue is invisible (≈228px, sky-noise level) while green and yellow read at ~8,000px**:
+blue is the darkest of the four cycle colours and the night exposure crushes it below the facade it sits
+on. **This is arithmetic, not taste — but every available remedy is a visual retune, so NONE was
+applied.** Options, with the one recommendation:
+- **RECOMMENDED — raise `emissiveIntensity` on the clone** (one line, `cl.emissiveIntensity = N`), the
+  only knob that brightens the tint without changing the model's own colours. Start at 3-4 and bake one
+  854×480@15 HHS check; the measured 0.165-0.27× says ~4× is the order needed to clear the pale panels.
+- Also set `cl.color.setHex(hex)` (albedo + emissive) — brighter still, but it repaints the material,
+  and §55.1(2) already found albedo tinting hostage to lighting direction (`setColorAt` is albedo, "a
+  face turned from the sun stays dark almost regardless of tint colour"). Second choice, not first.
+- Swap `#2979ff` for a brighter blue. Cheapest, but it fixes one storey of four and leaves the
+  mechanism; and the blue/green/yellow/orange cycle is the user's own words (§55, header line 35).
+**Do not "fix" this by re-tuning colours or opacity on your own judgement — this feature has been
+reworked three times (§55.1) and a fourth unrequested reinterpretation is the thing to avoid.**
+
+**60.4 ⛔ LEFT FOR THE USER — the window opens on a hard camera cut; HHS gets NO lead-in.**
+`effects.js:8079` `_storeyRevealWindowSec = Math.min(_useSec.rise, STOREY_REVEAL_WINDOW_SEC=10)`. On
+HHS `_useSec.rise = 2.7` ⇒ the clamp binds ⇒ **the window is the WHOLE pullback beat**, so the design's
+own "the LAST N seconds of pullback" degenerates to "all of it". Measured: at 114.60s the frame is the
+aerial clash-marker shot (green marker pixels 13,155); at 114.67s it is a low ground-level exterior
+(green 8) — a hard cut, and `windowStartFrac×durationSec = 114.69s` falls inside that same frame pair.
+So Level 1's entire 1.01s slot is spent in the first second after a cut, while the viewer is still
+parsing a brand-new shot. That compounds 60.3: the least visible colour gets the least attentive
+second. **Recommendation: reserve a lead-in** — e.g. `Math.min(_useSec.rise - LEAD_IN_SEC, 10)` with
+`LEAD_IN_SEC ≈ 0.8`, floored so a short pullback still yields a usable window. This is a PACING change;
+it needs the user's ruling, not ours. (Note §55/§57's own history here: the window was already widened
+5s→10s once for "seems to wait too long" — the opposite complaint. Do not widen; add a lead-in.)
+
+**60.5 ⛔ LEFT FOR THE USER — the finding plate names a different storey than the highlight, for
+100% of the window after slot 1** (§59.8's authorised relaxation, now seen on screen). Frames:
+114.67-116.80s the bottom-left plate reads `Structural — column continuity / Level 1 / CRITICAL`
+while the stat card and tint move to **Level 2** at 115.70; 116.87-119.0s the plate reads
+`Safety — door clear width / Level 2` while the tint is **Level 3** and then **Roof Level**. Two
+different storey names on screen simultaneously, continuously, from 115.70s to the window's end.
+§59.8 predicted exactly this (`overrunSec=1.19s`) and the user authorised it for HHS's 1.01s slot —
+but it was authorised in the abstract, before anyone watched it. **Recommendation: keep the linger,
+drop the storey name from the plate's own line while it is overrunning** (the finding's category +
+element is the content; the storey label is what collides). 60.1 already cuts the overrun 1.19→0.86s.
+
+**60.6 ⛔ STILL UNRESOLVED — §58.3's black patch is STILL PRESENT on the freshest real-GPU bake.**
+New, independent confirmation on `HHS_lingerfit2`, measured not eyeballed: near-black pixels
+(`r,g,b < 25`) below the horizon jump **6,821 → 17,483 in ONE frame (115.33s → 115.40s)** and the
+region's mean darkens **(17,13,12) → (7,5,5)**, i.e. ~10,600px of near-pure black appear and then
+persist **1.27s**, clearing only at 116.67s when Level 3's own tint lands on that same band. 115.35s is
+exactly Level 1's `u = LIT_FRAC(0.72)` lit→dark boundary. §58.3 saw this on the 2026-09-10 bake at
+t=115.267→115.333 and called it momentary; on this bake it is a second-long event. **No new theory is
+offered here and none should be invented** — §58.3's own prescribed next step (a `--tap` raycast
+installed into a REAL `--gpu real` bake, closing the swiftshader caveat) is still the step to take, and
+§57.2's dead theories (lazy `setColorAt` buffers defaulting to black) stay dead.
+
+**60.7 ⛔ NOT PROVEN, named so it isn't rediscovered — Level 1 loses most of its facade to the
+regular-mesh guard.** `§STOREY_REVEAL_TINT` vs `§FACADE_ONLY_TINT`, same bake: Level 1 **15 facade
+GUIDs → 7 meshes touched**; Level 2 15 → 13; Level 3 18 → 17. Only Level 1 loses more than half. By
+direct SQL on the canonical DB, Level 1's AABB-selected facade is **1,013 m² of 1,122 m² (90%) from 5
+`IfcCurtainWall`** (Level 2: 23 of 244 m²; Level 3: 8 of 373 m²) — so Level 1 is the one storey whose
+facade is mostly curtain wall. `_applyTint`'s regular-mesh branch skips any mesh with
+`Array.isArray(o.material) || !o.material.emissive || !o.material.clone`. **Hypothesis, UNVERIFIED:
+curtain-wall meshes are multi-material (glass + mullion) and are being skipped, costing Level 1 ~90%
+of its selected facade area.** Cheapest next step, no GPU: add a counter to that branch logging how
+many facade GUIDs were skipped and by which clause, then read it off the next bake's log — do NOT
+patch the branch before that number exists.
+
+**60.8 CHECKED AND CLEAN — do not re-investigate these.** Storey ORDER is correct (ascending mean
+element Z; on screen Level 2's green band sits one band BELOW Level 3's yellow band — no off-by-one,
+no wrong storey lit). The `' Ceiling'`/`' TOS'`/`'Unknown'` exclusions work (HHS's `Unknown`, 2,120
+elements at mean z 5.16, is correctly absent from `§STOREY_REVEAL_LIST`). No tint bleeds onto a
+neighbouring storey. `§STOREY_REVEAL_MARKERS_OFF` fires once at window open and restores at bake exit,
+as designed.
