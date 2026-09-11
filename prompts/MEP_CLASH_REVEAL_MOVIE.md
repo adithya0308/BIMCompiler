@@ -3681,3 +3681,134 @@ tested, the storey-reveal window itself (a pre-existing feature, §55/§58.5 —
 thing that needs lengthening to ever demonstrate this feature live, not the picker logic.** A synthetic
 witness proving the mechanism (§59.5, 20/20) is not the same claim as a real building clearing the real
 threshold — keep both honest and don't conflate them.
+
+### 59.7 SPEC (2026-09-11) — §ROOM_INJECTION_PATH_GAP: why the egress distance-to-exit card never
+### appears on a real bake, and the two independent defects behind it
+**User: "Was discussed to complete that in last session on the Room Injection path gap."** §59.4's
+"longest distance to exit — Xs / ~Ysteps" sub-text IS implemented and witnessed (§59.5, 20/20) but has
+never once rendered on a real building. Cause established from the real HHS bake log
+(`/tmp/wt-rule-findings-film/out/HHS_allon_mobile.log`, `feat/rule-findings-film` @ `e517edc9`), not
+inferred:
+```
+§EGRESS rule=door_clear_width severity=12 critical=0
+§EGRESS_NO_ROOMGRAPH RoomGraph module not available — rules 2/3 skipped
+[RP-PATH] §PATH_LEGAL_RASTER storeys=Level 1,Level 2,Level 3,Unknown
+[RP-PATH] §ROOM_GRAPH_EXITS exits=0 noRaster=133 of 133 doors
+[RP-PATH] §ROOM_GRAPH nodes=77 doors=133 ... circ=3 stairs=2 exits=0 e2=74
+```
+**NOT a missing-room-injection problem — injection ran and persisted.** Verified with `sqlite3` against
+the canonical `~/Downloads/HHS_Office_Federated_silent.db` (§59.6b): 100 `spatial_structure` rows with
+`type='IfcSpace'` and guid prefix `RM_`, `rooms_meta.room_count=75` (Hospital's same query: 8 / 7). The
+rooms are there; the graph never gets to use them for egress. Two independent defects, stacked — fixing
+either one alone still yields no card.
+
+**D1 §EGRESS_ROOMGRAPH_LATE_BIND — `viewer/egress_sanity.js:25` binds `RoomGraph` at FACTORY time.**
+```js
+var RoomGraph = (typeof module !== 'undefined' && module.exports) ? require('../common/room_graph.js') : ROOT.RoomGraph;
+```
+`egress_sanity.js` is a static `<script>` in `viewer/viewer.html` (~L895) that runs at page boot, while
+`common/room_graph.js` is lazy-loaded on demand by `APP.loadNavigate()` (`viewer/main.js`'s `modules`
+list, `viewer/scene.js:2091`). So the IIFE captures `undefined` **permanently**; a later `loadNavigate()`
+populates `window.RoomGraph` but can never reach the already-frozen binding. `viewer/viewer.html`'s own
+comment above that tag ("in the browser it reads window.RoomGraph, which is lazy-loaded on demand") is
+what the code was INTENDED to do and does not do. `viewer/rule_findings_film.js:202-206` already awaits
+`A.loadNavigate()` before calling — correct, and wasted, because of this bind.
+**Fix:** read `ROOT.RoomGraph` at CALL time inside `evaluate()` (Node `require` branch unchanged, so
+`witness_rule_findings_film.js`'s stubbed `EgressSanity` and every Node caller are unaffected).
+
+**D2 §STOREY_FOOTPRINT_NOT_LOADED — `common/storey_footprint.js` was never added to the browser load
+list.** `common/room_graph.js:84` binds `StoreyFootprint` the same factory-time way, and E4 exit
+detection gates on it: `_footprintFor()` returns `null` when `!StoreyFootprint`, so
+`if (!raster || !footprint) { exitsNoRaster++; return; }` (`common/room_graph.js:858`) skips EVERY door.
+That is exactly the `noRaster=133 of 133` above — and it is NOT a raster gap: `§PATH_LEGAL_RASTER`
+proves rasters were built for Level 1/2/3/Unknown on the same run. `storey_footprint.js` is new this
+session; it is `require`d by `witness_exit_detection.js` (which passes, in Node) but appears in no
+`<script>` tag and in no `main.js` module entry, so `window.StoreyFootprint` is undefined in every
+browser and every silent bake.
+**This is a verbatim repeat of `§HALLWAY-BACKBONE-NOT-LOADED`** (documented in `viewer/main.js:163-170`:
+"every corridor/spine/Hall-Corridor-label feature built this session had been silently no-oping in the
+browser, despite passing every Node-based witness, because this line never existed"). A Node witness
+passing is not evidence the browser path runs.
+**Fix:** add `'../common/storey_footprint.js?v=1'` to `viewer/main.js`'s `modules` array immediately
+BEFORE `'../common/room_graph.js'`, for the same stated reason `storey_raster.js` is already ordered
+there ("must load BEFORE room_graph.js — buildGraph() references window.StoreyRaster").
+
+**Expected result after both fixes, stated BEFORE the run so it can be falsified:** `§ROOM_GRAPH_EXITS`
+should report `exits=3 noRaster=0 of 133 doors` on HHS — the figure `§EXIT-SAMPLE-CLEARANCE`
+(`common/room_graph.js:838-846`) already cites as HHS's calibrated count at the 1.0m margin. Egress
+rules 2/3 then run, `circulation_distance` rows appear, and §59.4's distance-to-exit sub-text has real
+`ratio` metres to take `Math.max` over. **If `exits` comes back 0 with `noRaster=0`, D2 is fixed and the
+exterior test itself is the next thing to look at — do not call that success.**
+
+**59.7a TESTS — `witness_room_injection_path_gap.js` (new, Node).** Per the standing "every test must
+name the issue it proves or disproves" rule:
+- **P1 D1-LATE-BIND** — construct `EgressSanity` with `window.RoomGraph` UNSET at factory time, set it
+  afterwards, then call `evaluate()`: rules 2/3 must run. Proves the bind moved to call time. Fails
+  against the pre-fix file.
+- **P2 D1-STILL-HONEST-WHEN-ABSENT** — `window.RoomGraph` never set: `§EGRESS_NO_ROOMGRAPH` must still
+  be logged and rule-1 rows still returned. Proves the fix did not replace an honest skip with a throw.
+- **P3 D2-LOAD-ORDER** — assert `viewer/main.js`'s `modules` array contains `storey_footprint.js` at an
+  index BEFORE `room_graph.js`. A string/order assertion, not a mock: the defect IS the missing line.
+- **P4 D2-REAL-EXITS** — real `buildings/HHS_Office_Federated_silent.db` (symlinked canonical, §59.6b)
+  through `RoomGraph.buildGraph()` with `StoreyFootprint` present: `exits > 0` and `noRaster === 0`.
+  Disproves "HHS has no derivable exits" as an inherent property of the building.
+- **P5 DISTANCE-IS-MEASURED-NOT-FABRICATED** — every `circulation_distance` row's `ratio` must be a
+  finite positive number originating from `escapeRoute()`/`shortestPath()`; assert no row is emitted
+  when the graph yields no path (the §59.4 "dropped, never 0s / 0 steps" contract).
+
+**59.7b ✅ IMPLEMENTED (2026-09-11, bim-ootb `feat/rule-findings-film`, worktree
+`/tmp/wt-rule-findings-film`).** Both defects fixed, 24 insertions across two files:
+- **D1** — `viewer/egress_sanity.js`: factory-time `var RoomGraph = ... : ROOT.RoomGraph` replaced by
+  `_resolveRoomGraph()`, called at the top of the rules-2/3 block. The Node `require` branch keeps its
+  eager bind (no lazy-loading exists there; every Node caller and `witness_rule_findings_film.js`'s
+  stubbed `EgressSanity` are untouched).
+- **D2** — `viewer/main.js`: `'../common/storey_footprint.js?v=1'` added to the lazy-load `modules`
+  array immediately before `'../common/room_graph.js?v=12'`.
+
+**Witness: `witness_room_injection_path_gap.js` (new), 13/13.** P1/P2 load `egress_sanity.js` in a `vm`
+with `module` absent and a fake `window` — the BROWSER branch, which is the only place D1 ever existed
+and precisely why §59.5's 20/20 could pass while the feature never once ran.
+**Falsified against the pre-fix files** (`git show HEAD:` both, re-run, restore): **9/13, with exactly
+P1a, P1b, P3a, P3b failing** — `❌ still logged §EGRESS_NO_ROOMGRAPH — binding still frozen` and
+`❌ storey_footprint.js is in viewer/main.js's load list at all  index=-1`. The tests fail on the bug
+and pass on the fix; they are not passing vacuously.
+
+**The §59.7 prediction held exactly.** Real `buildings/HHS_Office_Federated_silent.db` (symlinked
+canonical) now reports `§ROOM_GRAPH_EXITS exits=3 noRaster=0 of 133 doors` — the 3/133 figure
+`§EXIT-SAMPLE-CLEARANCE` calibrated at the 1.0m margin, reached independently here. Egress rules 2/3
+run and produce real rows:
+```
+§EGRESS rule=door_clear_width severity=12 critical=0
+§EGRESS rule=circulation_distance severity=71 uncapped_critical=68 viaExit=76 viaFallback=0
+§EGRESS rule=isolated_room severity=1
+§INJECTED_ROOMS n=100
+```
+`viaExit=76 viaFallback=0` — every room now escapes via a REAL measured exterior door, never the
+`CIRC::` fallback. **§59.4's distance-to-exit sub-text now has a real `Math.max` to take: 112.77 m**
+→ `112.77 / 1.2 = 94.0s` and `Math.round(112.77 / 0.75) = ~150 steps`, both from the measured
+`escapeRoute()` metres. The one `isolated_room` row carries `ratio: null`, never a fabricated 0.
+
+**59.7c ⛔ WHAT THIS DOES *NOT* FIX — the card still will not appear on an HHS bake.** §59.7 removed the
+data gap; the §59.6c **legibility** gap is untouched and independent. The 5th real HHS bake
+(`out/HHS_allon_mobile.mp4`, 640x360@15, 1957 frames, 905s wall, every frame converged, `fileOk=true`
+— note this run used 640x360, NOT §59.6a's canonical 854x480@15; per §59.6c that changes nothing about
+NOFIT, but the canonical resolution is what a rebake should use) logged again:
+```
+§RULE_FILM_WINDOW winSec=4.03 storeys=4 slotSec=1.01 eligible(>=2.2s)=false
+§RULE_FILM NOFIT slotSec=1.01s < 2.2s — no storey stays on screen long enough, nothing scheduled
+```
+That run predates the fix, so it would still NOFIT after it: NOFIT is decided by the storey-reveal
+window, before any finding is consulted. **Next step is therefore §59.6c's own conclusion, now with one
+fewer confound: lengthen the storey-reveal window itself (a pre-existing §55/§58.5 feature, not part of
+§59), or bake a building whose window clears 2.2s/storey.** A post-fix rebake is worth doing to confirm
+`§ROOM_GRAPH_EXITS exits=3 noRaster=0` in a real bake log rather than only in the witness — but do not
+expect the card until the window question is settled.
+
+**59.7d PRACTICE NOTE, same lesson as §59.6a and `§HALLWAY-BACKBONE-NOT-LOADED` before it.** `common/
+storey_footprint.js` was written, required by a Node witness, and passed — while being unreachable from
+every browser and every bake for its entire life. **A new file under `common/` is not wired until it is
+in `viewer/main.js`'s `modules` list or a `viewer.html` `<script>` tag; a passing Node witness is not
+evidence that the browser path executes it.** Cheap standing check after adding any `common/*.js`:
+`grep -n '<new file>' viewer/main.js viewer/viewer.html` — if that returns nothing, the browser never
+sees it. Equally: a UMD/dual-mode module that reads a lazily-loaded global must resolve it at CALL time,
+never at factory time.
