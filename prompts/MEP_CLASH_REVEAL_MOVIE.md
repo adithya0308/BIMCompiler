@@ -4574,3 +4574,129 @@ still happens. M1-M3 now do that for this one.
 **72.2 TESTS.** **M1** the Measure box receives a Sanity entry when one is on screen (fails against
 §70/§71 — no post at all). **M2** exactly one per frame, and it is the nearest. **M3** the echoed
 entry carries its category ink so §68's colours still apply. **24/24.**
+
+### 73. SPEC (2026-09-12) — §HUD_MEDIA_SCHEMA: translucency back, a palette that separates at a glance,
+### smaller Sanity labels with a 3s TTL
+**User, after watching `Hospital_FULL_1080p_2026-09-11.mp4`: "it looks good. Suggestions: 1. Restore
+back the info panels translucence see thru and colour scheme to differentiate at one glance. Yes they
+may not be that legible but user can pause and the scene movement helps contrast... 2. Sanity messages
+... they are too many and thus spawn all over the screen. Make them a bit smaller in print to not
+obscure scene too much and TTL max 3 secs."**
+
+**73.0 §68 IS DELIBERATELY OVERRIDDEN, and the scope is the BOXES.** The user's clarification when an
+earlier draft of this section started re-deriving 3-D marker colours: *"i mean the pop up boxes
+containing the messages, not the markings on scene itself."* This section is about the label plates and
+info panels only. §68 made every plate opaque (`rgba(0,0,0,0.85)`) to clear WCAG 4.5:1 against a bright
+facade; the user has weighed that and chosen the other side, with a reason — a film is not a web page,
+the viewer can pause, and the background is moving, so a still-frame contrast ratio is the wrong
+acceptance test for box text in this medium. **The bar is waived, not forgotten:**
+`witness_hud_legibility.js` still measures and PRINTS every ratio, and still enforces a floor of
+**1.5:1** — low enough to honour the waiver, high enough that an ink within a hair of its own plate
+fails the build instead of shipping invisible. Real ratios after this change: title 1.79, structural
+2.00, safety 1.54, body rows 3.59, card label 3.18, card sub 2.85.
+
+**73.1 THE COLLISION THAT MADE "AT A GLANCE" IMPOSSIBLE.** Clash owns red and blue:
+`clash_labels.js:93` `COL_A = tint(255,33,26,0.45)` → `rgb(255,133,129)`, `COL_B` → light blue.
+Sanity's egress ink is `#e57373` = `rgb(229,115,115)` — **the same salmon as clash's A-side**, so a
+Safety finding and a clash A-element read as the same thing. §68 chose `#e57373` purely on contrast
+maths and never checked it against the palette already on screen. A colour is not just a contrast
+value; it is an identity, and two features cannot share one.
+
+**73.2 THE SCHEMA.** Four identities, each unambiguous against the others AND against the scene (night
+sky, brown ground, green MEP, grey-white facade):
+- **Clash A — red** `rgb(255,133,129)`, **Clash B — blue** — unchanged, not this feature's to move.
+- **Structural — amber `#ffb300`.** Warm, reads as load/caution, far from clash red in hue.
+- **Safety/egress — violet `#ea80fc`.** Deliberately NOT red, and CHOSEN BY MEASUREMENT: of ten
+  candidates scored in CIE-Lab against everything already on screen, it keeps dE 50.9 from the nearest
+  (clash A) while staying light enough to read as box text. **`#e57373` scored dE 8.1 from clash A —
+  perceptually the same colour**, which is precisely why nothing separated at a glance. RGB distance
+  hides this (it reported 35); the witness now uses CIE-Lab for that reason.
+- **A 3px category edge bar down the left of every Sanity plate**, in the category ink. Hue alone is
+  unreliable at small sizes on a moving background; an edge bar is a shape cue that survives both.
+
+**73.3 TRANSLUCENCY RESTORED.** `A.cpePanelPlate` returns to the frosted treatment — 9px blurred
+backdrop, `rgba(0,0,0,0.42)` (0.52 on the no-blur fallback), 1px `rgba(255,255,255,0.20)` edge. All
+three film boxes and the main HUD share it, as §65 established.
+
+**73.4 SANITY LABELS — smaller, and a hard 3s life.** Font `h*0.016` → `h*0.013`. Each label lives at
+most `LABEL_TTL_S = 3.0` film seconds, then retires and yields its slot; a retired finding is not
+re-shown until every other candidate has had a turn, at which point the rotation resets. With 509
+findings on Hospital and 8 slots, that turns a static crowd into a rotation — the user's "too many,
+spawn all over the screen" is a throughput problem, not a count problem.
+
+**73.5 TESTS.**
+- **S1 PALETTE-IS-DISTINCT** — Sanity's inks differ from clash's `COL_A`/`COL_B` by a stated minimum
+  hue distance. Fails against `#e57373`, which is the defect §73.1 names.
+- **S2 TRANSLUCENT-AGAIN** — the plate alpha is back under 0.5.
+- **S3 STILL-ABOVE-THE-FLOOR** — every ink clears the waived 1.5:1 floor, with all real ratios printed.
+- **S4 TTL-RETIRES** — a label shown for 3.0s stops being drawn.
+- **S5 ROTATION** — after retirement a different finding takes the slot, and the set resets only once
+  every candidate has had a turn.
+- **S6 SMALLER** — the label font is strictly smaller than before at the same frame height.
+
+### 77. NEW SPEC (2026-09-12) — §RULE_FILM_SET_PULSE: one box per RULE, a depth wave per set
+**The user's own design, arrived at by watching the Hospital 1080p bake.** Their words, in order:
+*"the structural sanity checks seems to cover a slate of items of similar nature right? If so, perhaps
+a single message box is enough?"* … *"i do not mean sweeping by storey but by set"* … *"the set also
+pulse from near outwards to afar effect. So they don't all pulse at once. The wave outwards gives a
+good perception of depth."*
+
+**77.1 THE INSIGHT, CONFIRMED BY THE DATA.** 509 findings on Hospital are not 509 stories — they are
+**six**:
+```
+span_depth_cantilever 217 · span_depth_steel 204 · floating_member 43 · column_continuity 24
+circulation_distance   13 · isolated_room        8 · door_clear_width 0 (nothing to say)
+```
+HHS's 215 are **three**: column_continuity 131, circulation_distance 71, door_clear_width 12. §70's
+per-element labels were therefore repeating five or six sentences hundreds of times, which is why the
+film read as spam — it WAS spam. One box per RULE loses nothing: "217 cantilevers over span/depth"
+says everything the 217 separate labels said, and says it once.
+
+**77.2 THE MODEL.**
+- **A SET is one rule's flagged elements.** The unit is the set, explicitly NOT the storey — a set may
+  happen to cluster by storey, but that is incidental and must not drive anything.
+- **One box per set**, stating the **set TOTAL outright** — `span/depth cantilever · 217 flagged`.
+  NOT the visible share: the user ruled directly on this, *"a grasp of total outright is more important
+  than to await whole film revealing the total."* The box appears with the wave and **lingers 2s** after it.
+- **The pulse is a WAVE in view-direction depth** — near members first, far members last, so the set
+  reads as occupying space rather than blinking as one flat mass. Per-element delay comes from depth
+  along the camera's forward axis, not straight-line distance: down a corridor or a long span, view
+  depth is what reads as depth. Each element then decays on its own.
+- **RE-PULSE ON ANY NEW ≥2s-DWELL MEMBER — the dwell is the gate, not turnover.** The user corrected an
+  earlier draft of this section that made a 3/4-turnover fraction the trigger: *"The glow pulse >2secs
+  renew means the scene may not wait for 3/4 gone off frame. This ensures the anew even though few gets
+  noticed. The old remain in frame may enjoy a faster renew but that won't hurt perception."* So a set
+  re-pulses the moment it gains ANY newly-visible member that will stay ≥2s; members already on screen
+  pulse again alongside it, and that repetition is the FEATURE — the viewer sees the same set recur
+  across the building and grasps that the problem is everywhere, rather than reading each instance as a
+  separate incident.
+- **The only rate limit is structural:** a set cannot start a pulse while its own is still running
+  (wave + 2s linger), giving a floor of ~3s between pulses. No tuned cooldown constant.
+- **Overlap:** with 3-6 sets, collisions are rare. When two boxes do collide, reposition into free
+  space — never suppress one, which would make the film lie by omission.
+
+**77.3 THE ≥2s DWELL IS EXACT, NOT ESTIMATED — and this is only possible in a bake.** The pose list for
+the whole film exists before the first frame is rendered (`cinema_maxq.js` builds it up front), so for
+any element the intervals in which it is in frustum are COMPUTABLE, not guessed. "Will this member stay
+in frame 2 seconds?" is a lookup. An element that would flash and vanish inside 2s never triggers a
+pulse and never wastes one. A live viewer could not do this; the film can, and should.
+
+**77.4 WHAT THIS RETIRES.** §70's per-element floating labels, §70.2's TOP_N=8 ranking with
+RANK_MARGIN_M hysteresis, §71's visible-first re-ranking, §73.4/§74's label TTL and 30% ageing, and
+§72's Measure-box echo of a single rotating finding. All of it existed to manage crowding that this
+design does not create. **Retired WITH their cause recorded here**, not silently deleted — the witness
+keeps checks asserting the retirement so a later reader sees it was deliberate. §69's hide counting,
+§67's two-table geometry, §62's shine-through material and §73's palette/plate/shadow all stay.
+
+**77.5 TESTS.**
+- **P1 ONE-BOX-PER-RULE** — N findings across R rules yield at most R boxes, never N.
+- **P2 TOTAL-NOT-VISIBLE** — the box states the set's full count even when only a few members are in
+  frame. Fails any implementation that counts what is on screen.
+- **P3 DWELL-GATE-IS-EXACT** — a member visible for 1.5s never triggers; one visible for 2.5s does.
+  Driven from a synthetic pose list, so the assertion is about the computation, not about a bake.
+- **P4 ANY-NEW-MEMBER-TRIGGERS** — one new qualifying member re-pulses the set; no turnover fraction is
+  required. This is the correction the user made, asserted directly.
+- **P5 NO-RESTART-MID-PULSE** — a set already pulsing does not restart, giving the ~3s floor.
+- **P6 WAVE-IS-VIEW-DEPTH** — per-element delay orders by depth along the camera forward axis; the
+  nearest member starts first and the farthest last.
+- **P7 LINGER** — the box is still drawn 2s after the wave ends, and gone after that.
