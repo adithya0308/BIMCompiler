@@ -4248,3 +4248,35 @@ DIFFERENT from the title's — never the same hex — and that is a new design n
   HUD/status boxes', with and without an ink.
 - **P3 TITLE-INK-SURVIVES** — the title is still `#ffaa33` with that ink, and `#4fc3f7` without
   (§61 intact).
+
+### 65. SPEC (2026-09-11) — §MEASURE_PLATE_MATCHES_HUD: the film boxes use the main HUD's own plate
+**User: "just make background same as main HUD which has no issue."** §64 removed the same-hue fill
+and left the Measure box on a flat `rgba(0,0,0,0.45)`. That is not the same background the main HUD
+uses, so this closes the gap the user actually named.
+
+**65.1 WHAT THE MAIN HUD ACTUALLY DRAWS** — `viewer/cpe_resource_panel.js` `_plate` (~L532), the
+right-column stat cards: a blurred backdrop of the pixels already behind it (`_glass`, 9px), then
+`rgba(0,0,0,0.28)` over that, then a 1px `rgba(255,255,255,0.20)` edge. When the blur is unavailable
+(`ctx.filter` or `document` missing — a Node witness, a headless path) `_glass` returns false and the
+fill falls back to `rgba(0,0,0,0.45)`, which is exactly what the film boxes were already using.
+
+**65.2 SHARE THE IMPLEMENTATION, DO NOT COPY THE VALUES.** `_plate` is promoted to
+`A.cpePanelPlate(ctx, x, y, bw, bh, rad)` and `cpe_film_boxes.js`'s `plate()` calls it. Reproducing
+the three values in a second file would let the two surfaces drift the moment either is retuned —
+the same "ONE implementation for both modes" discipline `_plate`'s own comment already states, and the
+same reason `cpe_film_boxes.js`'s plate comment gives for one implementation across its boxes.
+`plate()` keeps the flat fill as a fallback for when `cpe_resource_panel.js` is not loaded; since that
+is also the panel's own no-blur fallback, the two agree even in that case.
+
+**65.3 SCOPE — this reaches all THREE film boxes, not only the Measure box.** `plate()` is shared by
+the HUD, status and Measure boxes. Changing only the Measure box would leave one frosted box beside
+two flat ones, i.e. trade the reported inconsistency for a new one. The visual delta for the other two
+is small (flat 0.45 → frosted 0.28 plus a hairline edge) and it makes the film's whole HUD one system
+with the main panel. Recorded here because it is wider than the words of the request.
+
+**65.4 TESTS — extend `viewer/tests/witness_film_boxes.js`.**
+- **P4 DELEGATES-TO-THE-HUD-PLATE** — with `A.cpePanelPlate` present, the Measure box calls it exactly
+  once with that box's own x/y/w/h. Proves it shares rather than imitates.
+- **P4b NO-LOOK-ALIKE-UNDERNEATH** — when delegating, `plate()` paints no fill of its own.
+- The pre-existing P2/P2b keep asserting the flat fallback, which is the path the mock A (no
+  `cpePanelPlate`) exercises — so both branches stay covered.
