@@ -13,7 +13,8 @@ highlight — raster-boundary classifier, 4-9x more coverage per floor). TWO ITE
 (identical flagged frame timestamps across 3 different code versions = deterministic, not a lighting
 race) and names what to check next. §58.3 (storey darkening) has a verified live reproduction
 narrowing the search a lot, but the live probe runs on software rendering — next step is verifying
-against the real hardware-GPU bake path before trusting any fix.**
+against the real hardware-GPU bake path before trusting any fix. §59 is a NEW feature spec (not yet
+implemented as of this writing) — Structural Sanity + Egress findings baked into the film.**
 
 ## Shipped, closed, merged to main — compact recap (full detail in the archive above)
 Started 2026-08-07 as a triage against a competitor MEP-coordination movie capture: the finding was
@@ -4558,3 +4559,94 @@ nothing about the original method's own behaviour. Union counts, all real, all m
 
 4-9x more facade wall elements light up on every main floor, with the two known edge cases (Level 7's
 raster quirk, Level 7A's missing raster) provably costing nothing thanks to the union design.
+
+### 59. NEW SPEC (2026-09-11) — Structural Sanity + Egress findings baked into the film, gated on
+`cpe-measure`. User's own suggestion, refined across several rounds of discussion this session. NOT
+IMPLEMENTED YET — this is the written spec required before any code, per this project's Spec-First
+rule. Depends on `feat/structural-sanity` (PR #1715/#1709, open/unmerged — `viewer/structural_sanity.js`,
+`viewer/egress_sanity.js`, `viewer/rule_checklist.js`), which is a SIBLING branch of `feat/measure-boxes`
+(16 commits unique to one, 15 to the other, off a common ancestor `f1ac7ce1`) — implementation needs
+both merged into one worktree, not a straight continuation of either.
+
+**59.1 Why "Measure"**: `_measure` (`cinema_maxq.js:1189` at time of writing) already gates 5 other
+Build()/At(filmSeconds) module pairs (flythruDatum, slabBeat, linearBeat, indoorBeats, flyoutBeats) —
+floating members / unsupported columns / isolated rooms / narrow doors are the same class of "real
+measured fact about this building" as those, so they ride the SAME checkbox as a 6th pair, not a new
+one. Real Hospital numbers already measured by `StructuralSanity.evaluate`: 43/1970 floating beams,
+24/255 unsupported columns — cited here as the DB-backed source, nothing invented.
+
+**59.2 Engine reuse — zero duplicated rule logic.** One new module, `rule_findings_film.js` (singular,
+not split per-discipline — both categories share 100% of the scheduling/render code below, only the
+data source and the category colour differ). `Build(dbQuery)` calls `StructuralSanity.evaluate` and
+`EgressSanity.evaluate` exactly once each, same "call the shared evaluate(), never re-derive" rule
+`clash_narrow.js`/`clash_film.js` already established for clash pairs. Each returned row
+(`{guid, ifc_class, name, storey, rule, severity, ratio}`) is tagged with its category
+(`structural` or `egress`) at collection time.
+
+**59.3 Selection — reuses the existing "readable dwell" convention, invents no new dwell metric.**
+Earlier in this discussion a per-GUID screen-time/raycast dwell computation was considered and
+rejected — there is no existing utility for it anywhere in this codebase (checked: `dwell` elsewhere
+means slider/gesture pauses or scrub-hold seconds, unrelated), and building one would be a second,
+separate feature. Instead: each selected finding gets ONE beat, scheduled while its own storey is the
+one currently reveal-active (same storey-sequencing every other Measure beat rides on), using the
+SAME envelope every other Measure cue already uses — `fadeIn 0.6 + hold 1.0 + fadeOut 0.6 = 2.2s`
+(`§14`'s envelope, shared byte-for-byte by `cpe_slab_beat.js`/`cpe_linear_beat.js`/
+`cpe_flythru_cues.js`/`cpe_flyout_beats.js`/`cpe_indoor_beats.js`). This satisfies the user's own
+"chase only clear opportunities, that can stay for >2s" requirement BY CONSTRUCTION — 2.2s is already
+this project's own measured "long enough to read one cue" span, not a new number picked for this
+feature. Per-storey candidates: prefer higher severity first (CRITICAL over WARNING), one beat slot
+per storey visit. **One-of-each guarantee**: if both categories have at least one finding anywhere in
+the building, the selection MUST include at least one `structural` and at least one `egress` beat
+across the whole film — never silently drop a whole category to fit a cap. If a category is genuinely
+empty (`evaluate()` returns zero rows), no card/beat/banner for it — vacuous, not faked (same rule
+`bigStatsBuild` already holds every card to, `§CPE_BIG_STATS`).
+
+**59.4 Visual treatment — solid colour, NOT pulsing.** Considered and explicitly rejected: a "rapid
+pulse" on the marked-out finding, to read as more urgent than a static highlight. Rejected because (a)
+there is no existing pulse-rate constant anywhere in this codebase to extract — `clash_film.js`'s own
+`envelope()` is a slow 5s breathe (1.0/0.5/1.5/2.0s), the only precedent, and a "rapid" rate would be a
+brand-new invented tuning number with no source; (b) the user offered static solid colour as an
+explicitly sufficient fallback once told this. **Decision: static solid colour per category, no
+animation, on all three surfaces below.** `STRUCTURAL = '#ffaa33'` (orange), `EGRESS = '#cc4444'`
+(red) — these are CATEGORY colours, a different axis from `rule_checklist.js`'s existing SEVERITY
+colorMap (`CRITICAL:'#cc4444', WARNING:'#ffaa33', OPTIMIZED:'#44cc44'`); reusing those exact two hex
+values for the category axis instead of inventing new swatches, on the coincidence that "egress/safety
+critical" and "structural warning" already happen to be red/orange in the existing map.
+**Explicit divergence, noted so it is not "corrected" back later**: `clash_film.js`'s convention is the
+OPPOSITE of what's wanted here — there, every unselected pair breathes together and the ONE selected
+pair goes solid to stand out. Here, the requirement is the reverse: the active finding is the
+attention-getter (solid saturated colour) and every OTHER flagged-but-not-currently-active GUID stays
+static too (dim/desaturated, never animated) — the user's own words: "there won't be similar all
+pulsing on/off for them in background as that be too noisy." No shared global phase is needed at all
+once pulsing is dropped, which also removes the "multiple findings pulsing out of sync" concern raised
+earlier — it's moot without animation.
+
+Three surfaces, one colour source (`CATEGORY_COLOR[cat]`):
+- **(a) Measure info box** (`cpe_film_boxes.js`) — `A.filmBoxesMeasurePost(title, rows, ink)` ALREADY
+  threads an `ink` parameter through to the queue, but `drawMeasureEntry` currently ignores it and
+  hardcodes `ctx.fillStyle = '#ffd600'` (`§7`'s cue ink) for every title, and `plate()` is a fixed
+  `rgba(0,0,0,0.45)` background shared by all three boxes (HUD/status/Measure). Two small, additive
+  changes: `drawMeasureEntry` uses `head.ink` for the title colour when present (falls back to the
+  existing yellow when absent — every other Measure caller is unaffected); `plate()` gains an optional
+  tint argument so the Measure box's background can be filled with a translucent version of the same
+  category colour when the queued entry carries one (HUD/status boxes keep the untouched black plate).
+- **(b) 3D wireframe tint** — `rule_checklist.js`'s existing `showRuleModeTint(guidSeverityMap,
+  colorMap)`, called with a colour map keyed by CATEGORY instead of severity for this feature's guids,
+  static (no per-frame colour update needed since nothing animates).
+- **(c) Closing-stage summary cards** — mirrors `§CLASH_HUD_CARD` exactly (`cpe_resource_panel.js`
+  `bigStatsBuild`, ~L308-319: pull a `.stats()` summary from the film module, push ONE card per
+  non-empty category, dropped entirely — never a fabricated zero — when a category found nothing).
+  New: `bigStatsBuild` pushes `{big: <count>, label: '<category> issues flagged', sub: '<top rule
+  breakdown>', src: 'rule_findings_film.js', ink: CATEGORY_COLOR[cat]}` for each non-empty category.
+  `bigStatsCompositeOntoCanvas` today hardcodes `ctx.fillStyle = '#fff'`/fixed greys for every card's
+  number/label/sub — no per-card colour exists anywhere in that renderer yet. Additive fix: read
+  `c.ink` when present for the big-number fillStyle (falls back to the existing white for every
+  pre-existing card, which never sets `ink` — zero behaviour change for them).
+
+**59.5 Not yet done** — spec only as of this writing. Implementation: new worktree merging
+`feat/measure-boxes` + `feat/structural-sanity` (siblings, per §59 above), `rule_findings_film.js`
+Build/At pair wired into `cinema_maxq.js`'s existing `_measure` branch as a 6th module alongside the
+other five, the three additive renderer changes in 59.4, and a witness proving: `Build()` returns real
+rows from `StructuralSanity.evaluate`/`EgressSanity.evaluate` against a real DB (not a mock), the
+one-of-each guarantee holds when both categories have findings, and `At()` posts the right title/rows/
+ink only inside its own scheduled 2.2s window and nothing outside it.
