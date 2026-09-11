@@ -4641,6 +4641,23 @@ Three surfaces, one colour source (`CATEGORY_COLOR[cat]`):
   `bigStatsCompositeOntoCanvas` today hardcodes `ctx.fillStyle = '#fff'`/fixed greys for every card's
   number/label/sub — no per-card colour exists anywhere in that renderer yet. Additive fix: read
   `c.ink` when present for the big-number fillStyle (falls back to the existing white for every
+  pre-existing card, which never sets `ink`).
+  **User addition (2026-09-11): the EGRESS card's `sub` also carries "longest distance to exit —
+  Xs / Ysteps".** Source: the real graph-measured `ratio` (metres) already on every
+  `circulation_distance` row (`RoomGraph.escapeRoute()`/`shortestPath()` distance, not fabricated) —
+  take `Math.max` across the selected egress rows. Two conversions, honesty-labelled differently:
+  - **Seconds** = `distance_m / A.WALK_SPEED`. `A.WALK_SPEED = 1.2` (`config.js`) already exists in
+    this codebase — EXTRACTED, not invented — though its current real use is tour-camera walkthrough
+    pacing (`tour.js`), not evacuation modelling; repurposing it here for a time estimate, not a new
+    number. (The OTHER walk constant in this codebase, `cpe_walk.js`'s `WALK_SPEED_MPS=6`, is
+    explicitly a fly-navigation speed, not a walking pace — wrong one to reuse here.)
+  - **Steps** = `Math.round(distance_m / 0.75)`. No stride-length constant exists anywhere in this
+    codebase to extract — 0.75m/step is a standard adult-stride ergonomic convention from OUTSIDE
+    this project. Labelled explicitly as an estimate in the sub-text (e.g. "~62 steps"), same honesty
+    convention `§NIGHT_PL_INTENSITY_HEURISTIC` already established for this project's one other
+    unavoidably-external style constant ("fixture PL intensity is an explicitly-labeled style
+    convention, not real photometric data") — never presented as a measured fact.
+  Dropped (not shown as "0s / 0 steps") when no `circulation_distance` row exists in the selection —
   pre-existing card, which never sets `ink` — zero behaviour change for them).
 
 **59.5 Not yet done** — spec only as of this writing. Implementation: new worktree merging
