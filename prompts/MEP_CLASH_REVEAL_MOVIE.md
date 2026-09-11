@@ -4748,3 +4748,18 @@ t=3.5/4.5/8/20/60s while the set is visible). **P4 had to be rewritten twice**: 
 means the box no longer disappears, so the observable moved to the wave restarting; and again because
 it sampled at exactly `since=0`, where every glow is legitimately 0 and the check read a pass as a
 fail. Sample after the attack begins, or the assertion proves nothing.
+
+**78.6 §79 THE RELEASE TRAVELS TOO.** User: *"the release should also directional wave out, so the
+optics gives cognition."* §78.2's release let the whole set go at once, which threw the direction away
+at the end and left the eye with half a motion — the fill said "outward", the release said nothing.
+Both fronts now run the same axis: `RELEASE_S 0.9s` travel, then `FADE_OUT_S 0.6s` per member once the
+release front reaches it. Nearest lights first AND lets go first; farthest lights last and holds
+longest. Total 4.1s (fill 1.4 · hold 1.2 · release travel 0.9 · fade 0.6). Measured on the shipped
+code, near→far across the four members:
+```
+FILL     t=0.7 ■□□□   t=1.1 ■■□□   t=1.5 ■■■□   t=2.0 ■■■■
+HOLD     t=2.8 ■■■■
+RELEASE  t=3.1 ▓■■■   t=3.4 ░▓■■   t=3.7 □░▓■   t=4.0 □□░▓
+```
+**P9/P9b** assert it: mid-release the nearest is dimmer than the farthest, and the glow is monotonic in
+depth — a clean front rather than scattered fades. 18/18.
