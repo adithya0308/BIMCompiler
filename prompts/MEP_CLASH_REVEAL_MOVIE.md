@@ -4763,3 +4763,26 @@ RELEASE  t=3.1 ▓■■■   t=3.4 ░▓■■   t=3.7 □░▓■   t=4.0 �
 ```
 **P9/P9b** assert it: mid-release the nearest is dimmer than the farthest, and the glow is monotonic in
 depth — a clean front rather than scattered fades. 18/18.
+
+### 80. (2026-09-12) — two fixes the wave clip exposed
+**80.1 THE STOREY ROW — §75 WAS PLUMBING WITHOUT AN EFFECT.** §75 split the storey out of the room
+line, but only when ONE storey was announced (`stSame`). Measured on the real clip
+(`out/HHS_wave_clip.log`): **filled=0, blank=112** — the camera almost always sees more than one
+storey, so the condition never held and the row stayed empty while the Room row truncated under both
+halves. The user: *"It is just a split of the 'Level..' part of now in Room string so the Room is not
+truncated and has space."* `_lineFrom` now also collects each GROUP's storey header, so several
+storeys give `Level 1, Level 4` in the Storey row and the Room row keeps only the bare room names.
+Still split where the line is COMPOSED — never by re-parsing the joined string — so `parts` is
+unchanged and every existing caller and witness sees exactly what it did.
+**The lesson: "the fix is in" is not the same claim as "the fix fires."** §75 was reported as done on
+the strength of the code change; one grep of a real log would have shown 0/112.
+
+**80.2 THE BOX WAS DRAWN EVERY FRAME AND STILL LOOKED LIKE IT RENEWED.** User: *"The pop up Sanity
+message box still renew instead of staying."* §78.3 made the box persist — and it did: `boxes=1`
+every frame. But it was ANCHORED to the set's nearest visible member, which changes as the camera
+moves, so it hopped around the frame. Persisting and staying put are different properties, and only
+the first was implemented. The position is now PINNED when the box first appears, held while the set
+is on screen, re-placed only on a frame-size change, and unpinned once the set has been gone for
+`BOX_LINGER_S`. A collision nudge writes back to the pin so it does not re-nudge every frame.
+**P10** drives the camera so the projected anchor jumps corner to corner and asserts the box does not
+move with it. 19/19.
