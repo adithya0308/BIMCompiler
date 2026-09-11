@@ -3828,3 +3828,54 @@ evidence that the browser path executes it.** Cheap standing check after adding 
 `grep -n '<new file>' viewer/main.js viewer/viewer.html` — if that returns nothing, the browser never
 sees it. Equally: a UMD/dual-mode module that reads a lazily-loaded global must resolve it at CALL time,
 never at factory time.
+
+### 59.8 SPEC (2026-09-11) — §RULE_FILM_LINGER_FIT: the NOFIT gate measures the wrong span
+**User, after watching `HHS_allon_mobile.mp4`: "Even if 1.1s, let the message linger 3 secs etc.
+Outlier edge cases."** Granted, with the cost stated below.
+
+**The gate was comparing the wrong number, and the linger it ignores already exists.**
+`viewer/cpe_film_boxes.js:239` `var LINGER_S = 2.2;`, exposed at `:241` as `A.filmBoxesMeasureLingerS`.
+`A.filmBoxesDrawMeasure` holds the last posted entry on screen for a further `LINGER_S` after its beat
+marker is gone (`§MEASURE_BOX_LINGER start/end`, 9 of them in the real HHS bake log). So a finding
+posted inside HHS's 1.01s slot is ALREADY visible for ~3.21s. `rule_findings_film.js:145`'s
+`if (slotSec < ENV_SPAN)` tests the slot alone, as though the box cleared the instant the storey's slot
+ended. It does not. No new dwell constant is invented here — the 3s the user asked for is what the
+existing linger already delivers.
+
+**Fix:** `var lingerSec = (typeof A.filmBoxesMeasureLingerS === 'number') ? A.filmBoxesMeasureLingerS : 0;`
+and gate on `slotSec + lingerSec < ENV_SPAN`. Reading the live value (never a second hardcoded 2.2)
+keeps this from drifting if `cpe_film_boxes.js` ever retunes its linger.
+
+**THE HONEST COST, which §59.3 must be read against.** §59.3 scheduled each beat "while its own storey
+is the one currently reveal-active". That is now RELAXED, not deleted: with `slotSec=1.01` and
+`ENV_SPAN=2.2` the caption outlives its own storey tint by **1.19s**, so for that time the Measure box
+names a finding on storey N while storey N+1 is the one tinted. Logged every time as
+`§RULE_FILM_LINGER_FIT ... overrunSec=...`, never silently. This is the trade the user authorised as an
+edge-case allowance; §58.1's "chase only clear opportunities" now means "clear enough to READ", not
+"perfectly aligned to the tint".
+
+**And state plainly what the gate becomes.** With the Measure box present, the effective floor is
+`ENV_SPAN - LINGER_S = 2.2 - 2.2 = 0`, so NOFIT can no longer fire on window size at all. The branch
+survives only for the case where no Measure box is wired (`A.filmBoxesMeasureLingerS` absent ⇒
+`lingerSec = 0` ⇒ the original `slotSec < 2.2` test). Do not describe the floor as still guarding
+legibility on a real bake — it does not.
+
+**59.8a TESTS — extend `witness_rule_findings_film.js` (do not fork a second file).**
+- **L1 LINGER-ADMITS-SHORT-SLOT** — the existing scenario-2 plan (`slotSec=0.25`) plus
+  `filmBoxesMeasureLingerS: 2.2` must now reach BEAT and pick both categories. Fails pre-fix.
+- **L2 NO-LINGER-STILL-NOFITS** — scenario 2 unchanged (mock `A` sets no `filmBoxesMeasureLingerS`)
+  must STILL be NOFIT with both totals reported. Proves the honest branch survives and that the fix
+  reads the live value rather than assuming 2.2.
+- **L3 OVERRUN-IS-REPORTED** — the admitted case logs `§RULE_FILM_LINGER_FIT` naming `overrunSec`,
+  so how far a caption outlives its storey is never hidden.
+- **L4 HHS-REAL-NUMBERS** — `slotSec=1.01 + lingerSec=2.2 = 3.21 >= 2.2` admits, `overrunSec=1.19`.
+  The real building that motivated this must be shown clearing it, with its own figures.
+
+**59.8b REBAKE — Hospital needs `--measure` FORCED, an exception to §59.6a.** The 2026-09-11 Hospital
+bake (`out/Hospital_allon_854x480.mp4`, 2937 frames, 48.6MB, 2853s wall) logged `§RULE_FILM_INIT` and
+then nothing: its saved `cinema_path` is `bands=4 hoseOps=0 buildup=1 roomTitle=1 reveal=1` — **no
+measure** — and Sanity rides Measure, so §59 never evaluated (`§CPE_BIG_STATS cards=7`, no clash or
+sanity cards). §59.6a's "with no flags at all, the saved path decides" holds, but for Hospital the
+saved path decides AGAINST Measure. Hospital's window is `windowSec=10.0` (vs HHS's 4.03) over 8 real
+levels (Level 1..7A; `Ceiling`/`TOS`/`Unknown` are not storeys) ≈ 1.25s/storey — predicted NOFIT
+pre-fix, `1.25 + 2.2 = 3.45s` admitted post-fix. That prediction is stated here BEFORE the bake.
