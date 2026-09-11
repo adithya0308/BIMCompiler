@@ -4700,3 +4700,51 @@ keeps checks asserting the retirement so a later reader sees it was deliberate. 
 - **P6 WAVE-IS-VIEW-DEPTH** — per-element delay orders by depth along the camera forward axis; the
   nearest member starts first and the farthest last.
 - **P7 LINGER** — the box is still drawn 2s after the wave ends, and gone after that.
+
+### 78. (2026-09-12) — §RULE_FILM_SET_PULSE, three corrections from the first real clip
+**HHS clip baked (`~/Downloads/HHS_setpulse_clip_2026-09-12.mp4`, 854x480, 294 frames).** §77 read
+correctly on screen — `Structural — column continuity · 131 flagged` as ONE amber box where §70 drew
+131 labels. Three things the clip exposed:
+
+**78.1 THE WAVE WAS COMPUTED AND NEVER DRAWN.** User: *"don't notice the pulse outward effect."* It was
+not there to notice. The composite calculated a per-member `glow` and then called
+`A.ruleTintShowOnly(set)`, which took a BOOLEAN — so every member of a pulsing set appeared at once
+and the glow was discarded. `ruleTintShowOnly` now takes an INTENSITY 0..1 per guid, driving
+`instanceColor` (which multiplies the shared material, so one material still serves the whole bucket)
+plus a 1.0→1.35 scale pop. A computed value with no consumer is worth exactly nothing; the witness
+could not catch it because it only ever asserted the numbers, never that anything read them.
+
+**78.2 THE ENVELOPE WAS A BLIP, NOT A WAVE.** User: *"Hope the pulse out is dramatic, not pops, but
+wave out, remaining in pulse, before fade out."* The first cut faded each member as soon as the front
+passed it (`glow = 1 - lit/decay`), so the near end was dark before the far end lit — a travelling
+blip. Four phases now: **travel** (`WAVE_S 1.4s`, front nearest→farthest), **attack** (`0.18s` swell
+per member as the front arrives, not a switch), **hold** (`1.2s` — everything the front has reached
+stays lit while the wave completes), **release** (`0.9s`, the whole set together). 3.5s total.
+Measured on the shipped code:
+```
+t=0.3 near lit          t=1.1 p2 swelling 0.93     t=2.0 ALL lit, holding
+t=0.7 near + p1         t=1.5 far beginning 0.56   t=3.0 all 0.56 together   t=3.6 dark
+```
+The set reads as one body filling and releasing, which is the point — these are 131 instances of ONE
+finding, and the animation should say so.
+
+**78.3 THE BOX MUST NOT BLINK.** User: *"the same Sanity message box need not renew while they remain
+or repulse on screen. Keeping the same box until end of pulsing helps eyeballing it well."* Box and
+pulse are now separate lifetimes: the PULSE is the wave and re-fires on a new qualifying member; the
+BOX is held for as long as the set has any member on screen, fading only once the set leaves frame
+(+`BOX_LINGER_S`). With pop-ups already down from hundreds to a handful, a held box costs nothing and
+a blinking one costs the read.
+
+**78.4 FILLED MARKERS — opt-in, NOT a change to the shared constant.** User: *"I thought it be more
+filled bboxes see thru."* It costs nothing — same geometry, same instanced draw, one flag. **A first
+attempt edited `RULE_TINT_MATERIAL_OPTS` directly and broke `tests/test_rule_mode_tint.js`**, because
+that constant is T5's contract that interactive Rule Mode must equal Clash MODE's material — which
+§62.2 had already ruled out of scope. Correct shape is the one §62 established: a film-only opt-in,
+`{filled:true}` → `wireframe:false, opacity:0.22`. F1 now asserts the shared constant is untouched.
+
+**78.5 TESTS.** `witness_rule_findings_film.js` 16/16, `tests/test_rule_mode_tint.js` 26/26.
+P7 ("box gone after linger") was RETIRED — §78.3 makes it wrong — and replaced by **P8** (box held at
+t=3.5/4.5/8/20/60s while the set is visible). **P4 had to be rewritten twice**: once because §78.3
+means the box no longer disappears, so the observable moved to the wave restarting; and again because
+it sampled at exactly `since=0`, where every glow is legitimately 0 and the check read a pass as a
+fail. Sample after the attack begins, or the assertion proves nothing.
