@@ -4436,3 +4436,59 @@ checked against one number instead of re-deriving this audit.
 
 **69.2 NOT CHANGED.** The hiding behaviour itself is untouched — it is shared with interactive Rule
 Mode (§62.4 already ruled that out of scope). This section adds counting, not a behaviour change.
+
+### 70. SPEC (2026-09-11) — §RULE_FILM_CLASH_MODEL: cut the storey-reveal tie, show findings like clashes
+**User: "Why [did you] tie them in the first place? Isn't it supposed to appear during movie similar to
+clash?" then "Now you know how to solve. Do it."**
+
+**70.1 WHY THE TIE EXISTED — nobody asked for it.** §59.3 considered giving each finding its own
+screen-time computation, rejected that as "a second, separate feature", and reused the storey-reveal
+sequencing other Measure beats already rode. It was a shortcut chosen in spec, never a requirement.
+Findings therefore inherited the storey window's limits, and **three of this session's problems trace
+to that one decision**: only 2 findings shown out of 215 (HHS) / 509 (Hospital); §59.8's NOFIT, which
+exists only because a storey slot can be too short; and §60.5's caption naming one storey while another
+is lit. None of them are properties of Sanity.
+
+**70.2 THE MODEL TO COPY — clash, exactly as it already works.** `clash_film.js` puts its markers into
+the scene ONCE and they persist for the whole film; `clash_labels.js` then, per frame, ranks every pair
+by camera distance, admits the `TOP_N = 8` nearest with `RANK_MARGIN_M = 0.6` hysteresis, drops
+anything outside the frustum, walks the rest rejecting screen-space overlaps, and fades each in over
+`FADE_S = 0.5` film seconds. Real evidence it works at scale:
+`§CLASH_LABELS frame=0 eligible=8 labelled=1 skippedOverlap=7`. No window, no per-storey slot, no cap
+at 2. **Reuse these four constants and this shape verbatim — do not invent a second ranking scheme.**
+
+**70.3 WHAT CHANGES IN `rule_findings_film.js`.**
+- **Markers: ALL findings, once, for the whole film.** `showRuleModeTint(guidCat, CATEGORY_COLOR,
+  {shineThrough:true})` already does exactly this and is already shine-through (§62); it is currently
+  handed 2 guids and must be handed every finding's guid instead. Cost is one `InstancedMesh` per
+  colour regardless of count (`rule_checklist.js`), so 509 markers cost what 2 did.
+- **Labels: per frame, clash's algorithm.** Rank by distance from `A.camera` (the same handle
+  `cinema_maxq.js:1970` passes to `clashLabels.update`), TOP_N nearest, frustum test, overlap walk,
+  fade. Label text is the §63 messaging already settled: trimmed name, storey, unit-correct value.
+- **DELETED: the storey-reveal dependency entirely** — `A.storeyRevealList`, `winSec`/`slotSec`, the
+  `INCONCLUSIVE 'no storey-reveal window on this plan'` guard, and with them **§59.8's whole NOFIT
+  branch and §RULE_FILM_LINGER_FIT**. Those solved a problem that stops existing here. Hospital's
+  `§RULE_FILM INCONCLUSIVE` from the missing `--storey-reveal` flag also stops being possible.
+- **KEPT UNCHANGED:** the closing summary cards (§59.4c) and their §68 colours; `ruleFindingsFilm.stats()`;
+  §67's two-table geometry; §69's hide counting.
+
+**70.4 HONEST COSTS, stated before the code.**
+- Findings no longer coincide with their storey being lit. That was §59.3's original justification and
+  it is being given up deliberately — §60.5 shows it was already broken in practice (the caption
+  outlived its tint by 1.19s once §59.8 admitted short slots).
+- Clutter rises. The user has already accepted exactly this tradeoff for clash in §P2.1
+  ("Labels up to 8 pairs nearest... clutter acceptable"); the same TOP_N and the same overlap walk
+  apply here, so the behaviour is the one already reviewed and approved on the other feature.
+- `--storey-reveal` stops being required for Sanity, so §59.8b's flag exception disappears.
+
+**70.5 TESTS — extend `witness_rule_findings_film.js`, and keep it honest about what is gone.**
+- **K1 ALL-FINDINGS-MARKED** — `showRuleModeTint` is called with EVERY finding's guid, not 2.
+- **K2 NO-STOREY-DEPENDENCY** — a plan with NO `storeyReveal` still reaches state BEAT and marks
+  everything. Directly contradicts the old scenario-3 INCONCLUSIVE, which is retired with its cause.
+- **K3 TOP-N-NEAREST-WINS** — with a camera placed nearer one finding than another, ranking admits the
+  nearer first; at most TOP_N carry labels in a frame.
+- **K4 FRUSTUM-SKIP** — a finding behind the camera carries no label and is counted as skipped.
+- **K5 OVERLAP-SKIP** — two findings projecting to the same screen point yield one label, one
+  `skippedOverlap` — the count clash already reports.
+- **K6 NOFIT-IS-GONE** — the NOFIT branch no longer exists; a short/absent window is not a failure
+  state any more. Proves §59.8 was retired deliberately rather than left dead.
