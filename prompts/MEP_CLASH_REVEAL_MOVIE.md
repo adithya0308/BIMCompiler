@@ -4280,3 +4280,52 @@ with the main panel. Recorded here because it is wider than the words of the req
 - **P4b NO-LOOK-ALIKE-UNDERNEATH** — when delegating, `plate()` paints no fill of its own.
 - The pre-existing P2/P2b keep asserting the flat fallback, which is the path the mock A (no
   `cpePanelPlate`) exercises — so both branches stay covered.
+
+### 66. SPEC (2026-09-11) — §CLASH_WINDOW_DIAGNOSTIC: an inverted window was reported as a short one
+**Found while auditing this session's messages at the user's request ("important to check perf and
+messages"). Perf came back clean** — §65's three extra 9px blur passes per frame measured
+0.467 s/frame against 0.512-0.531 for the earlier bakes on the same building, i.e. inside run-to-run
+noise. The message audit found one real defect.
+
+**66.1 THE FACT.** All three HHS bakes this session logged:
+```
+§CLASH_HUD_PULLBACK_WINDOW INCONCLUSIVE reason=window-too-short start=0.879 end=0.872
+```
+`start` is AFTER `end` — the window is not short, it is **inverted**. `cinema_maxq.js:1741` reserves a
+fixed five seconds before orbit (`_pbEnd = _tR - (5 / plan.durationSec)`) for the sibling storey-reveal
+lane. On HHS that reservation (5.00s) is wider than the entire pullback sub-phase (4.03s, from
+`_pbStart=0.879` to `_tR=0.9099` across a 130.4s film), so the end lands before the start and the
+disc-pair highlight and its cards are skipped for the whole film. Hospital on the same code is healthy:
+`start=0.801 end=0.933 (tV=0.750 tR=0.959 tailSec=10.0 riseSec=30.8 durationSec=195.8)`.
+**Same family as §60.4** — a constant tuned on long films degenerating on a short one.
+
+**66.2 THE BEHAVIOUR IS CORRECT; DO NOT "FIX" IT BY CLAMPING.** Clamping the reservation to fit was
+considered and rejected on the arithmetic: HHS's whole pullback is 4.03s for `pairCards=8`, so even
+surrendering the entire reservation gives **0.50s per card**, and halving it gives 0.25s — far under
+the 2.2s §59.3 legibility floor this project already settled. Skipping is the right call and is exactly
+§58.1's "chase only clear opportunities". **What was wrong is only the message.**
+
+**66.3 THE FIX — say which failure it is, and show the numbers.** The reason is now
+`reservation-exceeds-span` when `_pbEnd < _pbStart`, and `window-too-short` is kept for the only input
+that still reaches it, an exactly-zero-width window. The line also carries `pullbackSpanSec`,
+`reservedSec`, `shortBySec`, `pairCards`, `durationSec`, and the per-card seconds a clamped window
+would have given — so a reader can see this is a fact about the film's beat geometry rather than a
+defect, without re-deriving anything.
+
+**66.4 TESTS — `witness_clash_pullback_window.js` (new, Node).** `cinema_maxq.js` cannot be required
+(DOM/THREE throughout), so every expression under test is **sliced out of the source text and
+evaluated**, never re-typed — the same technique `witness_batch_bucket_class_paint.js` used, and the
+reason a slice-failure aborts the run loudly.
+- **C1 FORMULA-MATCHES-A-REAL-BAKE** — the sliced `_pbStart`/`_pbEnd`/`_tailShare` reproduce
+  Hospital's own logged `0.801` / `0.933` / `0.245` from its logged inputs. Anchors the slice to real
+  data: if C1 fails the slice grabbed the wrong expression and nothing below it means anything.
+- **C2 INVERSION-IS-NAMED-AS-SUCH** — HHS's real inverted case reads `reservation-exceeds-span`.
+- **C3 ZERO-WIDTH-KEEPS-THE-OLD-REASON** — proves C2 did not rename every failure.
+- **C4 THE-NUMBERS-ARE-REPORTED** — `pullbackSpanSec` 4.03s and `shortBySec` = 5.00 − span.
+**10/10. Falsified against the pre-change file: the slice for `_spanSec` is absent there and the run
+aborts — the witness cannot pass against code that does not report the numbers.**
+**A NOTE ON C3, because it caught itself:** its first draft used an approximate short case that turned
+out to produce a VALID window, which never reaches the message at all — the check passed while proving
+nothing. The else branch runs on `_pbEnd <= _pbStart` while the ternary tests `_pbEnd < _pbStart`, so
+the only input that still reads `window-too-short` is an exactly-zero-width window, and C3 now
+constructs that precisely. A test that passes without reaching the code under test is not a test.
