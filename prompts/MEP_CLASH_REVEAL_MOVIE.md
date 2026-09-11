@@ -3637,23 +3637,33 @@ arithmetic.
 
 ### 59.6 REAL-BUILDING VERIFICATION + THE SILENT-BAKE PRACTICE LESSON (2026-09-11) — read this before
 ANY future quick-check bake in this lane, not just for §59.
-**59.6a THE CANONICAL SCRIPT AND ITS ACTUAL USAGE — `docs/BIMUserGuide.md` §"Baking without the browser"
-(lines ~593-673 at time of writing), NOT anything reconstructed from `cli_silent_bake.js`'s own header
-comment alone.** Read the user guide FIRST — its wording differs from the header in one load-bearing
-way: **"with no flags at all, the saved path decides"** — buildup/label/reveal/measure/storey-reveal are
-ALL restored from the DB's own saved `cinema_path` table settings, not just the shape. The canonical
-invocation for a quick check is therefore:
+**59.6a THE CANONICAL SCRIPT — `docs/BIMUserGuide.md` §"Baking without the browser" (lines ~593-673 at
+time of writing), NOT anything reconstructed from `cli_silent_bake.js`'s own header comment alone (the
+header lists `--measure`/`--storey-reveal` as togglable flags but does not say what's saved by default;
+the guide's prose does, and even the guide's own wording turned out to need checking against a REAL log
+rather than trusted at face value — see the correction below).
 ```
 node cli_silent_bake.js --db <Name>_silent --out /path/to/out.mp4 --gpu real [--width W --height H --fps N]
 ```
-**Passing `--measure`/`--storey-reveal`/`--buildup` etc. explicitly is redundant, not wrong**, when the
-saved path already has them on — which every building used throughout §38-§59's whole history does.
-Forcing the flags anyway (as this session first did, out of an unfounded worry the saved defaults might
-not cover a brand-new Measure sub-feature) cost real back-and-forth for zero behavioural difference —
-the restored defaults and the forced flags produced byte-identical NOFIT results on the same building.
+**⚠ CORRECTED (same session, after being wrong once): do NOT assume `--measure`/`--storey-reveal` are on
+by default from the saved path — verify with the bake's own `§CLI_BAKE_RESOLVED`/`§STOREY_REVEAL_WINDOW`
+lines, or just force them explicitly.** The guide's own prose ("the buildup, the room titles, the Reveal
+round and the day-counter corner... are all restored") never actually lists Measure or storey-reveal
+among the restored settings — this session first mis-read that sentence as covering them too, then
+proved it wrong on a REAL bake: a bare `--db Hospital_silent --out ...` (no flags) resolved
+`§CLI_BAKE_RESOLVED ... storeyReveal=0` — OFF — and produced zero `§RULE_FILM`/`§STOREY_REVEAL_WINDOW`
+lines at all, because `A.ruleFindingsFilmBuild` never even ran. A second Hospital bake with
+`--measure --storey-reveal` forced resolved `storeyReveal=1` and DID fire the feature (§59.6c). **For
+any Measure/storey-reveal-gated feature check, force both flags explicitly — never trust "the saved path
+decides" for these two specifically**, even though it holds for buildup/label/reveal/day-counter.
 **Established low-res convention for a quick check, extracted from this lane's own prior bakes (§57:
 `HHS_lowres_storeyreveal_2026-09-10.mp4`), not invented:** `--width 854 --height 480 --fps 15`. Don't
 pick an arbitrary lower resolution/fps — use this one unless a specific reason needs something else.
+**Read the bake's actual `--log FILE` on disk for `[con]`-tagged lines, never the harness's own stdout
+capture of a backgrounded shell command** — this session also mis-diagnosed a second Hospital bake as
+having failed to load the module at all, purely from grepping the wrong file; the real `--log` file had
+every line, the terminal-capture file was missing all browser-console output for reasons unrelated to
+the bake itself. Always `grep` the file named by `--log` (or its default, `<out-stem>.log`).
 
 **59.6b THE CANONICAL DB IS `~/Downloads/<Name>_silent.db` — NOT a same-ish-named file from a sibling
 worktree's `buildings/` folder, even if one exists and even if it looks equivalent.** This session
@@ -3667,20 +3677,26 @@ same-shaped filename is not proof of the same file. **Practice going forward: sy
 the served file is always the canonical one, byte-for-byte, with no drift and no wasted disk (these
 files run 80-315MB).
 
-**59.6c REAL RESULT ON THIS FEATURE, HONESTLY REPORTED — NOFIT on HHS, not yet confirmed on Hospital.**
-Real HHS bakes (both `--clip 0.85:0.95` and full-length, both with the saved-path defaults and with
-flags forced — all four came back identical) hit `§RULE_FILM NOFIT`: HHS's real storey-reveal window is
-`winSec≈4.0-6.1s` across 4 storeys ≈ **1.0-1.5s/storey**, under the 2.2s legibility floor §59.3 requires.
-**This is a genuine fact about HHS's current storey-reveal window sizing, not a bug in `rule_findings_
-film.js` and not caused by resolution/fps/flag choices** — the NOFIT branch is doing exactly its job
-(§58.1's own "chase only clear opportunities" rule: report the real totals, schedule nothing when nothing
-can be shown legibly). Hospital has more storeys but also a longer full film, so its own real
-`windowSec/storeys` ratio needs checking on its own numbers before assuming it will do better — do not
-assume a bigger building automatically clears the 2.2s bar. **If NOFIT persists on every real building
-tested, the storey-reveal window itself (a pre-existing feature, §55/§58.5 — not part of §59) is the
-thing that needs lengthening to ever demonstrate this feature live, not the picker logic.** A synthetic
+**59.6c REAL RESULT ON THIS FEATURE, HONESTLY REPORTED — NOFIT ON BOTH REAL BUILDINGS TESTED.**
+| building | real window | storeys shown | slot/storey | vs 2.2s floor |
+|---|---|---|---|---|
+| HHS (`--clip 0.85:0.95` and full-length, 4 runs) | 4.0-6.1s | 4 | 1.0-1.5s | NOFIT |
+| Hospital (full 278.8s film, `--measure --storey-reveal` forced, 46 min real-GPU bake) | 10.04s | 8 | **1.25s** | NOFIT |
+**This is a genuine, twice-confirmed fact about both buildings' current storey-reveal window sizing —
+NOT a bug in `rule_findings_film.js`, not caused by resolution/fps/flag choices.** The NOFIT branch is
+doing exactly its job (§58.1's "chase only clear opportunities" rule: report the real totals, schedule
+nothing when nothing can be shown legibly) — Hospital has twice HHS's window (10.04 vs ~5s) but also
+twice the storeys (8 vs 4), so the ratio lands in the same place; a bigger building does not
+automatically clear the 2.2s bar just by having a longer film. **The storey-reveal window itself (a
+pre-existing feature, §55/§58.5 — not part of §59) is what needs lengthening to ever demonstrate this
+feature live on either real building** — the picker logic is not the thing to change. A synthetic
 witness proving the mechanism (§59.5, 20/20) is not the same claim as a real building clearing the real
-threshold — keep both honest and don't conflate them.
+threshold — keep both honest and don't conflate them. **Not yet done, if this is ever prioritized:**
+either widen `plan.storeyReveal.windowFrac`/lower `MIN_SLOT_SEC` (both existing storey-reveal knobs,
+`cpe_storey_reveal.js`) enough to clear 2.2s/storey on a real building, or lower the picker's own 2.2s
+floor with an explicit user ruling first (it is currently this project's one universal "readable dwell"
+constant — changing it for this feature alone would be a deliberate, stated exception, not a quiet
+tweak).
 
 ### 59.7 SPEC (2026-09-11) — §ROOM_INJECTION_PATH_GAP: why the egress distance-to-exit card never
 ### appears on a real bake, and the two independent defects behind it
