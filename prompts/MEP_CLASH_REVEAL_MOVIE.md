@@ -4843,3 +4843,57 @@ correctly reported, nothing to draw.
 3. **A computed value with no consumer is worth nothing.** §78.1 — the depth wave was calculated
    per-member for a whole day and then discarded, because `ruleTintShowOnly` took a boolean. The
    witness asserted the numbers and never that anything read them.
+
+### 82. SPEC (2026-09-12) — §RULE_FILM_SET_QUEUE: stagger the sets, do not fire them all at once
+**Found by baking a THIRD building.** `Terminal_silent.db` (302MB, 48,428 elements, 6 storeys, 75
+injected rooms) was baked at 854x480 as a deliberate change of subject — and it is the first building
+where every structural rule fires:
+```
+column_continuity 108 · floating_member 26 · span_depth_concrete 17 · span_depth_cantilever 6 · span_depth_steel 1
+circulation_distance 19 · door_clear_width 25 · isolated_room 3        = 158 structural + 47 egress, EIGHT sets
+§ROOM_GRAPH_EXITS exits=11 noRaster=0 of 135 doors · maxExitDistM=96.4 · 791 frames, 449s, unconverged=0
+```
+**The defect §77 did not anticipate: nothing caps how many SETS pulse at once.** Measured on that bake:
+```
+boxes=7 on 20 seconds · boxes=8 on 9 · boxes=6 on 7 · boxes=5 on 7 · boxes=4 on 7
+```
+**Seven or eight boxes on screen for 29 of ~53 seconds.** §77 cut hundreds of per-element labels down
+to a handful of set boxes and then hit crowding again from the other direction. HHS never exceeded 2
+sets and Hospital 6, so this could not appear until a building with all eight rules live was baked —
+which is the argument for baking an unfamiliar building on purpose.
+
+**82.1 THE FIX, in the user's own words:** *"it is simply a matter of sequencing what comes on the
+scene, require a simple routine of which can be delayed to later or if all seems equal appearance
+slots, just stagger along consecutively with a 5 sec slot each. This is for earnest effort, some maybe
+missed."* So:
+- **Sets QUEUE rather than fire together.** When several become eligible in the same window, one takes
+  the scene and the rest are DEFERRED, not dropped.
+- **Order by opportunity where there is one to judge** — a set whose members will be on screen only
+  briefly should go first, because the one with a long dwell can still be shown later. §77.3's exact
+  dwell (from `plan.poseAt`, known before rendering) is what makes that judgement possible rather than
+  guessed.
+- **When they look equal, just take turns: `SET_SLOT_S = 5` each, consecutively.** No cleverness.
+- **EARNEST EFFORT, NOT A GUARANTEE.** The user said it plainly — *"some maybe missed"*. A set whose
+  members never come back into frame simply does not get shown, and that is acceptable. Do NOT bend
+  the camera or hold a shot to fit a set in, and do NOT fabricate a slot: the closing summary cards
+  already carry every set's total, so nothing is hidden even when a set never pulses.
+
+**82.2 WHAT MUST NOT CHANGE.** The §78/§79 envelope (fill 1.4 · hold 1.2 · release travel 0.9 · fade
+0.6 = 4.1s) is settled and the user has seen it; a 5s slot holds one 4.1s pulse with room to breathe,
+which is why 5 fits. The box stays PINNED (§80.2) and states the set TOTAL (§77.2). Queueing changes
+WHEN a set pulses, nothing about how it looks.
+
+**82.3 TESTS.**
+- **Q1 CONCURRENCY-CAP** — eight eligible sets in one window yield ONE pulsing at a time, not eight.
+  Fails against today's code, which is the defect.
+- **Q2 QUEUE-NOT-DROP** — the deferred sets still pulse later, in order; none is silently discarded.
+- **Q3 SHORT-DWELL-FIRST** — given two sets, the one whose members leave sooner is scheduled first.
+- **Q4 EQUAL-MEANS-STAGGER** — with equal dwell, sets take consecutive 5s slots.
+- **Q5 MISSED-IS-HONEST** — a set whose members never return is never shown AND its total still
+  appears on the closing card, so the film under-shows without ever under-reporting.
+
+**82.4 NOTED IN PASSING — the storey split survives non-English storey names.** Terminal's storeys are
+`Aras 01`/`Aras 02`/`Aras Tanah`, and §80's split produced `Storey="Aras 04, Aras 02, Aras 01, Aras
+Tanah"` with `Room="≈ R3, ⚠ R1, ≈ R5…"`, filled=71 blank=3. Nothing assumed a `Level N` pattern —
+`Aras Tanah` carries no digit at all. That is luck rather than design (the prefix comes from the
+model's own ladder), and deserves an explicit test before anyone "tidies" `_storeyPrefixOf`.
