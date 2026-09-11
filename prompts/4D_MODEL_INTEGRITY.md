@@ -2427,3 +2427,250 @@ early, before its actual context existed.
   test, never read `grounded[i]` at all) — not the same defect, do not conflate the two write-ups.
 - §I.2 (this file, line 510) — the rule this defect violates was already on record; it just never
   reached `_contactGraph`'s own internal use of `grounded[i]`.
+
+# §O THE "FLOATING BLUE PIECE" IN THE HHS BAKE IS A **CEILING PANEL**, PAINTED WITH ANOTHER CLASS'S MATERIAL — AND IT IS **NOT** §N (investigated 2026-09-11)
+
+**⛔ READ §O.0 BEFORE ASSUMING THIS IS §N. It is not. §N is real and still unimplemented; it is a
+different element, a different symptom, and a different file. Do not merge the two write-ups.**
+
+## §O.0 THE SIGHTING — CONFIRMED FROM THE BAKED FRAMES, NOT FROM THE REPORT
+
+User, 2026-09-11: "in the first few seconds of the HHS film a BLUE piece is FLOATING — an element in
+the air with no visible support", "one that escapes handling".
+
+**CONFIRMED.** Evidence: `/tmp/wt-rule-findings-film/out/HHS_lingerfit2_854x480.mp4` (854×480, 15 fps,
+1957 frames, 130.47 s, baked 2026-09-11), frames extracted with `ffmpeg -f rawvideo -pix_fmt rgb24`
+and scanned for the teal signature (`g>150 && b>150 && r<145 && |g-b|<25 && g-r>45`, HUD columns
+x≥660 excluded):
+
+```
+teal run frames 3..36   (t=0.20..2.40s)   maxpx=1314      ← THE SIGHTING, isolated, nothing else teal
+   absent at frames 0,1,2 (0 px); appears abruptly at frame 3; leaves frame top-right at 36
+next teal run          frames 220..232  (t=14.67..15.47s)
+```
+Day counter in-frame: Day 1 at frame 3, Day 3 at frame 21, Day 5 at frame 44. Screen centroid walks
+(506,194) → (638,221) as the camera dives. Rendered colour (84,189,186)/(104,197,192) — flat,
+untextured, hard-edged rectangle, **no element beneath it anywhere**, well outside the only thing
+built at that moment (the ground slab + 19-82 columns).
+
+## §O.1 IDENTIFICATION — BY CAMERA FIT, NOT BY EYE
+
+Neither the DB nor the log names what is on screen, so the camera was **recovered** and every element
+projected. Method, all inputs traced:
+
+1. `A.modelOffset = (9.32347, 10.09319, 5.79850)` — `AVG(center_x/y/z)` over `element_transforms`
+   (`streaming.js:3036`/`:3270`), confirmed by the bake log's own `[S192] §OFFSET ifc=(9, 10, 6)` and
+   `§GROUND_Y src=gf-storey-slab(Level 1) z=-0.21 y=-6.00` (⇒ off.z = 5.7985 exactly).
+2. IFC→three per `scene.js:499`: `x-off.x, z-off.z, -(y-off.y)`.
+3. fov **locked to 60** — `scene.js:139` `new THREE.PerspectiveCamera(60, …)`, corroborated by the
+   bake log's `§FLYTHRU_DATUM_LINES src=[camera d=48.1m fov=60 h=480px]`. (Fitting fov freely gave
+   70-71° and a wrong camera; locking it is what made the solution physical.)
+4. Target: the ground slab's real outline, decoded from `component_geometries` for
+   `3XrBtx9eX7mQE6EqWHPk2a` ("Floor:STB 30.0:573302", the FIRST op in the timeline) — a 12-vertex
+   L-polygon at ifc z = +0.094. 6-DOF (eye + look-at) fit by Nelder-Mead maximising overlap with the
+   frame's own achromatic-slab mask.
+5. **Independent check the fit is real:** projecting the 19 columns visible at frame 4 lands every
+   magenta stick on its rendered column. Fitted eyes lie on the dive from the logged home
+   `cam={"x":48,"y":64,"z":48}` toward `§CINEMA_DIVE settle=(12.5,-4.2,-5.0)`:
+   f4 (44.3,58.7,44.8) → f16 (31.6,44.2,30.6) → f22 (23.3,33.9,24.6).
+6. All 6,880 element bboxes projected in all three frames; ranked by **worst-frame** IoU against the
+   measured teal bbox.
+
+```
+minIoU=0.464 meanIoU=0.642  IfcCovering 3XrBtx9eX7mQE6EqWHPeEe   ← winner, by 1.4x on the worst frame
+minIoU=0.327                IfcWallStandardCase 3XrBtx9eX7mQE6EqWHPfw9
+minIoU=0.209                IfcFlowSegment 16d$HkZazE_AvZwsdCDrv9
+```
+
+**THE ELEMENT (`HHS_Office_Federated_silent.db`, the file `§CLI_BAKE_NAV` shows the bake loaded):**
+
+| field | value |
+|---|---|
+| guid | `3XrBtx9eX7mQE6EqWHPeEe` |
+| ifc_class | `IfcCovering` |
+| element_name | `Compound Ceiling:Abgehängte Decke 5.0cm - 600 x 600:580730` |
+| storey / discipline | `Level 3` / `ARC` |
+| material_rgba | **NULL** |
+| ifc centre / size | (10.11, 36.12, **9.78**) m / 5.89 × 7.33 × **0.05** m |
+| task | `TASK_Finishes_Level_3` (2026-10-21..10-22 — the LAST task of the programme) |
+| kernel_ops | `start_ts=1792622400000 end_ts=1792627200000` = the project's own end instant |
+
+A 5.89 × 7.33 m suspended-ceiling panel, 5 cm thick, at 9.78 m — i.e. a flat plate hanging in mid-air
+over a building that does not exist yet. The user's description is exact.
+
+## §O.2 ⛔ WHY IT IS **BLUE** — THE BATCH BUCKET KEY OMITS `ifc_class`, THE BUCKET'S MATERIAL DOES NOT
+
+`IfcCovering`'s own standard material is plasterboard **white** (`streaming.js:~938`,
+`IfcCovering: { r:0.90, g:0.88, b:0.84 }`). The only teal material anywhere in the viewer is
+`streaming.js:978`:
+```js
+IfcBuildingElementProxy:{ r: 0.00, g: 0.78, b: 0.78, rough: 0.50, metal: 0.10 , envInt: 0.05 },  // teal
+```
+(Swept: every `0x……`/`#……` literal in `viewer/*.js` — no other 3-D teal exists. `0x44cccc` etc. are
+DOM/CSS. `g≈b, r≈0` in the measured pixels matches this entry and nothing else.)
+
+**THE TWO LINES THAT DISAGREE:**
+
+- `viewer/streaming.js:2195` — the BatchedMesh/merge bucket key. **`ifc_class` is not in it:**
+  ```js
+  const key = (el.storey || '_') + '|' + (el.disc || '_') + '|' + (el.rgba || '_default') + '|' +
+              (el.matVariant || '') + '|' + (el.mepHint ? el.mepHint.code : '') + '|' +
+              (A._mepHueClasses[el.ifcClass] ? 'M' : '-');
+  ```
+- `viewer/streaming.js:2287-2288` — the bucket's ONE material, built from **`items[0]`'s class**:
+  ```js
+  var batchCls = items.length ? (items[0].el.ifcClass || '') : '';
+  const mat = A._getMaterial(rgba === '_default' ? null : rgba, batchCls, …);
+  ```
+
+So every member of a class-mixed bucket is painted with whatever class happened to land first.
+This is not a new hazard — `streaming.js:2183-2192`'s own comment already found and half-fixed it for
+the MEP case ("This branch gives the whole bucket ONE material built from items[0]'s class, so
+without this bit a mixed bucket would paint its non-MEP members an MEP trade hue. **Splitting the
+bucket keeps BOTH halves correct**"). It added a single `M`/`-` bit. **Two non-MEP classes still
+collide**, and that is exactly this case.
+
+**MEASURED** (`probe_batch_bucket_class.js`, the two classifiers `_entourageVariant`/`_mepNameHint`
+and `MEP_HUE_CLASSES` taken verbatim from `streaming.js:581/604/648`, `LOW_INSTANCE_BATCH_MAX=3`
+from `:2179`):
+```
+§PROBE_TARGET guid=3XrBtx9eX7mQE6EqWHPeEe class=IfcCovering
+  bucketKey="Level 3|ARC|_default|||-"  members=50
+  items[0]=IfcBuildingElementProxy (3__SWZOtr688t0Fh4Zpj9Z "M_WSHP - Horizontal … 14 kW:488732")
+  bucketClasses={"IfcBuildingElementProxy":13,"IfcDoor":16,"IfcCovering":18,"IfcRailing":3}
+  => painted with a FOREIGN class material
+```
+Fleet-wide, elements painted with **another class's** material:
+```
+Clinic      1,077 / 16,869   (18/85  buckets mixed)
+Duplex        250 /  1,140   ( 5/31)
+HHS           911 /  6,839   (12/46)
+Hospital    5,998 / 63,182   (43/217)
+JKR         1,493 /  8,985   (24/184)
+LTU_AHouse 25,913 /122,330   (107/227)
+Terminal      396 / 48,428   (24/176)
+TermRooms     396 / 48,428   (24/176)
+```
+On HHS the same bucket also paints 16 `IfcDoor` and 3 `IfcRailing` teal; `"Unknown|ARC|_default|||-"`
+paints 69 `IfcPlate`, 4 `IfcStair`, 8 `IfcStairFlight`, 8 `IfcRailing` with `IfcDoor`'s timber brown.
+
+## §O.3 ⛔ WHY IT IS **EARLY** — MEASURED, ROOT CAUSE **NOT** ISOLATED. OPEN.
+
+The colour explains "blue". It does **not** explain "at Day 1". That half is separately real:
+
+**The timeline is not at fault, and that is proven, not assumed.** The played layer is `kernel_ops`
+(`time_machine.js:92-111`: `start_ts = timestamp`, `end_ts = parameters._end_ts`, `ORDER BY
+timestamp`). Re-running that arithmetic against the shipped DB reproduces the bake log to within the
+3-4 bookkeeping ops:
+```
+cursor              log placed=   DB count=      log frontier=   DB frontier=
+1788313316183 (f0)      3             5               4               4     classes=[Col,Col,Col,Slab]
+1788780089117 (f60)   393           398               1 (f1..f8)      1     classes=[IfcColumn]
+1789247167241 (f120)  926           924
+1790648401612 (f300) 4294          4298
+```
+Under that timeline, at the sighting the visible set is **`IfcSlab` + `IfcColumn` only**. The earliest
+op start for every class that can be painted teal is far later:
+```
+IfcBuildingElementProxy  1789282225838  ≈ film frame 124   (Day ~12)
+IfcRailing               1789569228781  ≈ film frame 161
+IfcDoor                  1790380800000  ≈ film frame 265
+IfcCovering              1791763200000  ≈ film frame 443
+  … and THIS element's own op starts at 1792622400000 ≈ frame 553 (Day 50).
+```
+**So the teal object at frames 3-36 is drawn between ~88 and ~550 frames before any element of its
+class has even begun installing — for the identified panel, ≈ 49 project-days early.** The colour
+alone forces this conclusion independently of the camera fit: teal ⇒ a proxy-led bucket ⇒ its class
+is one of {Proxy, Door, Covering, Railing} ⇒ nothing of that class is placed, frontier or recent yet.
+
+**WHAT THIS IS NOT:** not the schedule (reproduced above), not `§N` (below), not a missing element
+(all 6,839 instances carry an `ELEMENT_PLACE` op; `covered=6880/6880`), not the merge path
+(`§MERGE_ROUTE` never logged ⇒ off), not DLOD (`§S261_DEFER_BBOX` never logged; `§DLOD_RESTORE`
+touches InstancedMesh only, `dlod.js:266-282`; `§DLOD_DISABLE reason=time-machine` at +7.4 s, long
+before frame 0 at +16.2 s).
+
+**WHERE IT MUST BE.** The only gate is `time_machine.js:1547/1584` —
+`(placed[bg] || frontier[bg] || recent[bg] !== undefined) && !bHideForProxy && !bStaged` →
+`obj.setVisibleAt(sid, true/false)`. A slot is visible-by-default at creation
+(`streaming.js:2337-2344` only ever calls `setVisibleAt(slot,false)`, for the storey/disc filter), so
+anything the traverse never reaches stays **on**. The prime suspect is the `§PERF_INCR` delta skip
+one line above it:
+```js
+if (_incrOK && !_tmHasEventIn(_evMesh[obj.id], _dLo, _dHi)) { _perfSkipped++; return; }   // :1535 / :1597
+```
+with `_evSig = '' + app._metaGen` (`:1183`) as its ONLY staleness signal, and any third party that
+sets slots visible outside the traverse (`panels.js:727` `filterBatchedMesh` via `A.filterStorey`) able
+to un-hide a mesh the delta pass will then never revisit. The bake ran `mode=full` exactly **twice**
+(log lines 429, 836) and `mode=delta` for the other **1,956** ticks, skipping ~370 of 480 objects each
+tick. **NOT PROVEN — this needs an instrumented run, which needs a GPU bake, which was not run.**
+
+## §O.4 RELATION TO §N — §N IS REAL AND REPRODUCES, BUT IT IS A DIFFERENT ELEMENT
+
+Re-ran the shipped `SupportSweep.contactGraph` (`support_sweep.js:384`) and PR #1712's
+`findTrueOrphans` measure against **the bake's own DB** (not the `_extracted` one the witness globs):
+```
+§PROBE_CONTACTGRAPH ok=true orphans=36 groundedN=727 total=6880
+§PROBE_MIS_EXEMPT n=3   (contacts===null BUT grounded[i]=1 — support_sweep.js:419 skips these)
+   3XrBtx9eX7mQE6EqWHPf0l / …e$q / …ezS  IfcBuildingElementProxy seq=5 "Stahlbalkon…" 0.09×1.00×7.07 bz=3.74
+§PROBE_TRUE_ORPHAN trueOrphan=4   (the 3 above + IfcFlowFitting 00szGmqsL8Tv_ErgPOhgVh)
+§PROBE_CROSS alsoEngineOrphan=0 alsoMisExempt=3 invisibleToBoth=1
+```
+So §N's defect is confirmed on the canonical DB and its `§FIX` remains worth doing. **It is not this
+sighting:** the Stahlbalkons are 7.07 m-tall, 9 cm-thin vertical blades (geometry decoded from
+`component_geometries`: local x∈[-0.045,0.045], y 1.00, z 7.07), they sit in
+`TASK_Architecture_Envelope_Level_2` (op start 1789952143664 ≈ frame **211**), and none of them wins
+the IoU test (best minIoU 0.144 vs the ceiling's 0.464). Forcing §O onto §N would have been a
+fabricated match.
+Also newly surfaced by the same probe and **not** in §N: `00szGmqsL8Tv_ErgPOhgVh`
+(`IfcFlowFitting`, duct elbow, 2.39 m) is a true orphan that `contactGraph` cannot see **at all** —
+neither as an orphan nor as a mis-exemption.
+
+## §FIX-O.2 — PUT `ifc_class` IN THE KEY THAT DECIDES THE MATERIAL
+
+One line, at the one site that owns the bucket identity (`streaming.js:2195`): append
+`+ '|' + (el.ifcClass || '')`. Then `items[0].el.ifcClass` at `:2287` is, by construction, every
+member's class, and the `M`/`-` bit becomes redundant-but-harmless (keep it; removing it is a second
+change and `§MEP_COLOR_SURVIVES_PHOTOREAL`'s witness gates it).
+This is the generalisation `:2183-2192` already argued for, applied to the whole class instead of the
+one MEP bit. It splits ONLY buckets that were already mixed — a class-pure bucket keys identically
+before and after.
+
+## §PREDICTION — WRITTEN BEFORE THE FIX WAS RUN. FALSIFIABLE.
+
+- **P1** `paintedWithAnotherClassMaterial` goes to **exactly 0** on all 8 shipped DBs (from
+  1077 / 250 / 911 / 5998 / 1493 / 25913 / 396 / 396).
+- **P2** Bucket count rises by **exactly** `Σ over previously-mixed buckets of (distinctClasses − 1)`
+  and by **0** for class-pure buckets. For HHS the mixed buckets hold 2,4,4,2,2,2,2,2,2,2,2,5 distinct
+  classes ⇒ **46 → 65 (+19)**. Any other number falsifies the "splits only mixed buckets" claim.
+- **P3** `3XrBtx9eX7mQE6EqWHPeEe` lands in a bucket whose `items[0].ifcClass === 'IfcCovering'`.
+- **P4 — THE HONEST HALF:** this fix does **not** move the reveal. The plate will still be drawn at
+  film frames 3-36; it will be plasterboard white instead of teal. If a re-bake shows the plate gone,
+  P4 is falsified and §O.3 was wrong about the two halves being independent.
+
+## §WITNESS CLAIMS — `viewer/tests/witness_batch_bucket_class_paint.js`
+
+- **W-BBCP-1** THE DEFECT: does any batch bucket contain more than one `ifc_class` while the bucket's
+  material comes from `items[0]`? Counts the mispainted population per building against a committed
+  baseline of 0. RED on unmodified main (36,434 fleet-wide), GREEN after.
+- **W-BBCP-2** THE SIGHTING: is `3XrBtx9eX7mQE6EqWHPeEe` painted with its own class? RED on main
+  (painted `IfcBuildingElementProxy`), GREEN after (`IfcCovering`). Names the film evidence so nobody
+  has to re-watch the bake.
+- **W-BBCP-3** THE COST, not hidden: the bucket-count delta equals `Σ(distinctClasses−1)` over the
+  buckets that were mixed, and no class-pure bucket is split. Fails if the fix over-fragments.
+- **W-BBCP-4** RED CONTROL: a synthetic two-class bucket must be flagged by the measure, so a green
+  W-BBCP-1 means "no mixing" and not "detector is broken".
+- **W-BBCP-5** WIRING: the key expression is **sliced out of `viewer/streaming.js` and evaluated**, not
+  re-typed here — if the shipped key changes, this witness follows it instead of silently testing a
+  stale copy.
+- **NOT CLAIMED:** nothing here proves or disproves §O.3. A witness for the early-reveal needs the
+  renderer.
+
+## §O.5 WHAT IS LEFT UNDONE, DELIBERATELY
+
+1. **§O.3 (the early reveal) is unfixed and unattributed.** It is the half the user actually
+   complained about. It needs an instrumented bake (`__TM_WBDEBUG` / a per-slot visibility dump at
+   frames 0-40) — i.e. a GPU bake, deliberately not run here.
+2. **§N `§FIX` still unimplemented** — reconfirmed on the canonical DB, still the right next job,
+   still a different defect.
+3. **The 4th true orphan** (`00szGmqsL8Tv_ErgPOhgVh`) is invisible to `contactGraph` in both
+   directions; §N's `§FIX` should be checked against it as well as the three balconies.
