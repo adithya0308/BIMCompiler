@@ -4413,3 +4413,26 @@ silently dropping under the threshold.
 **10/10. Falsified: reverting only `rule_findings_film.js` puts `#cc4444` back and the run exits 1.**
 Sibling suites re-run and updated where they pinned an old value: `witness_rule_findings_film.js`
 35/35, `witness_film_boxes.js` 14/14 + block 10/10, `tests/test_rule_mode_tint.js` 23/23.
+
+### 69. AUDIT (2026-09-11) — §RULE_TINT_NO_COLLATERAL: does the Sanity tint mark anything incidental?
+**User: "During movie are there any incidental element marked for the Sanity occurrence?"**
+**Answer: no — one marker per finding, and no neighbour is hidden.** Established from code and the
+real bake log, not assumed:
+- **What is DRAWN** is one wireframe bbox per picked guid, built from that guid's own row
+  (`ruleTintRowsFor`, §67). `out/HHS_hud_854x480.log`: `§RULE_TINT_ENTER elements=2 colors=2` against
+  `§RULE_FILM picks=2` — two findings, two boxes, nothing else.
+- **What is HIDDEN** is matched on a single `o.userData.guid`. `BatchedMesh`/`InstancedMesh` never
+  carry one — stated at `time_machine.js:1439` ("BatchedMesh/InstancedMesh, which never carry a single
+  userData.guid") and again at `hba_lens.js:604` ("misses every instanced/batched target — HHS's 716
+  instanced groups"). So a picked element sitting inside a batch cannot drag its bucket-mates
+  invisible, which is the one collateral mechanism that could plausibly exist here.
+
+**69.1 THE GAP THAT DID EXIST — it was true but UNCOUNTED.** Nothing logged how many meshes were
+hidden. If a batch ever did carry a single guid (one plausible route: a one-element bucket), its whole
+bucket would vanish and no line would say so — the same silent-drop shape §67 had just fixed on the
+other side of the same function. `§RULE_TINT_ENTER` now also reports `guidsAsked`, `meshesHidden`, and,
+only when non-zero, a flagged `batchedHidden=N` naming the condition explicitly. A future bake can be
+checked against one number instead of re-deriving this audit.
+
+**69.2 NOT CHANGED.** The hiding behaviour itself is untouched — it is shared with interactive Rule
+Mode (§62.4 already ruled that out of scope). This section adds counting, not a behaviour change.
