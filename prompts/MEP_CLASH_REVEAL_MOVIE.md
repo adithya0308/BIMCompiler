@@ -4557,10 +4557,14 @@ move with it. 19/19.
 `fix/storey-reveal-list` and `fix/batch-bucket-class-paint` are all merged into it. **`feat/structural-
 sanity` is still NOT an ancestor** — check before assuming the tree is whole.
 
-**81.0 START HERE, in order.** (1) **§82** — the only open item with a finished spec: 7-8 set boxes
-crowd the frame on Terminal; queue and stagger them. (2) **§60.3/§60.4/§60.6/§60.7** — storey-reveal,
-already measured, four defects still open. (3) **§81.3** — bake memory at model load. **§76.5 RECAP**
-replaces §61-§76: read it rather than those sections, seven of which are now stubs.
+**81.0 START HERE, in order.** ⚠ REVISED 2026-09-12 — **§82 is DONE (§83), shipped and proven on the
+Terminal bake that found it: 8 boxes peak down to 2.** The order is now: (1) **§84 §SANITY_EXIT_STAT** —
+the only open item with a finished spec: the `Longest path to exit — ~## steps` line on the flashing
+Sanity box. Buildable today from `_stats.maxExitDistSteps`; only §84.4's shared-helper extraction waits
+on PR #1715. (2) **§60.3/§60.4/§60.6/§60.7** — storey-reveal, already measured, four defects still open.
+(3) **§81.3** — bake memory at model load. Also open and smaller: §83.4's `boxes=0` on 9 of 53 seconds,
+and §83.5's transition fade, which the user parked pending an eyeball of `out/Terminal_lowres_v82.mp4`.
+**§76.5 RECAP** replaces §61-§76: read it rather than those sections, seven of which are now stubs.
 
 **81.1 WHAT LANDED, in order.** §59.7 room-injection path gap (two silent defects: a factory-time
 `RoomGraph` bind, and `storey_footprint.js` never added to the browser load list — `exits=0
@@ -4593,10 +4597,11 @@ up:** Hospital is a 300MB DB / 64,150 elements; the spike is at load, not during
 immediately after each kill; HHS (80MB) never triggered it. Worth measuring peak RSS across the load
 phase before changing anything.
 
-**81.3b OPEN — §82 SET QUEUEING, found after §81 was written.** Baking a third building
+**81.3b ✅ DONE (§83) — §82 SET QUEUEING, found after §81 was written.** Baking a third building
 (`Terminal_silent.db`) put **7-8 set boxes on screen for 29 of ~53 seconds** — §77 solved per-element
 crowding and hit set-level crowding. §82 specs the fix (queue and stagger, 5s slots, earnest effort
-not a guarantee) and is NOT implemented. Start there: it is the only open item with a finished spec.
+not a guarantee); **§83 records it shipped at `f135a63f`, witness 26/26, and re-baked on the same
+building: peak boxes 8 → 2, all eight rules still shown.**
 
 **81.4 ALSO OPEN, smaller.** §66 HHS's clash pullback window is inverted (`reservation-exceeds-span`)
 so its disc-pair cards never draw — behaviour is correct, the film just loses that content on short
@@ -4671,3 +4676,138 @@ WHEN a set pulses, nothing about how it looks.
 Tanah"` with `Room="≈ R3, ⚠ R1, ≈ R5…"`, filled=71 blank=3. Nothing assumed a `Level N` pattern —
 `Aras Tanah` carries no digit at all. That is luck rather than design (the prefix comes from the
 model's own ladder), and deserves an explicit test before anyone "tidies" `_storeyPrefixOf`.
+
+### 83. ✅ DONE (2026-09-12) — §82 §RULE_FILM_SET_QUEUE shipped and PROVEN ON THE BAKE THAT FOUND IT
+**bim-ootb `feat/rule-findings-film` @ `f135a63f`.** `viewer/rule_findings_film.js` only; no other file
+touched. `witness_rule_findings_film.js` **26/26** (was 19/19), `tests/test_rule_mode_tint.js` 26/26.
+
+**83.1 THE TEST NAMES THE DEFECT, not just the fix.** Run against the PRE-§82 file (`git show
+HEAD:viewer/rule_findings_film.js` into a scratch tree), the six new checks fail with `boxes=8` and
+`peak=8 over 81 samples` — the exact Terminal defect, reproduced by the witness rather than described
+by it. Q1 CONCURRENCY-CAP · Q2 QUEUE-NOT-DROP · Q2b HANDOVER-BOUNDED · Q3 SHORT-DWELL-FIRST ·
+Q4 EQUAL-MEANS-STAGGER · Q5/Q5b MISSED-IS-HONEST.
+Q3 is the one worth reading: it drives a plan whose camera turns 90° across the film so the two sets
+have genuinely different remaining dwell (13.25s vs 33.25s from `plan.poseAt`), and declares the
+LONG-dwell rule FIRST — so a FIFO queue would pick the wrong one. It asserts the judgement, not the
+plumbing.
+
+**83.2 THE ONE DESIGN CALL, and the user endorsed it — THE SLOT ONLY EXPIRES WHEN SOMEONE IS WAITING.**
+Queueing exists to cut crowding; with an empty queue there is no crowding to cut, and §78.3's held box
+is a direct user instruction. So a lone set keeps the scene and behaves exactly as it did before §82 —
+**P8 is unchanged, not weakened.** Without this rule §82 would have silently retired §78.3 on every
+building that only ever shows one or two sets, which is HHS and Hospital both.
+
+**83.3 THE REAL BAKE — `out/Terminal_lowres_v82.mp4`, the same building and settings that found the
+defect.** `Terminal_silent` 854x480@15 `--gpu real`, all flags forced. 791 frames, 449s wall,
+`aborted=no fileOk=true`. Identical inputs to the v80 baseline (`sets=8 marked=205
+structuralTotal=158 egressTotal=47 maxExitDistM=96.4`, `§ROOM_GRAPH_EXITS exits=11 noRaster=0 of 135
+doors`), so it is like-for-like and not a different film:
+```
+boxes on screen, per film-second (53 logged, from §RULE_FILM_SETS)
+v80 pre-§82    2:1  3:2  4:7  5:7  6:7  7:20  8:9        peak 8
+v82 post-§82   0:9  1:31  2:13                            peak 2
+```
+**All EIGHT rules held the scene**, in ten slots across 52.1s — `isolated_room → span_depth_steel →
+span_depth_concrete → circulation_distance → floating_member → span_depth_concrete →
+span_depth_cantilever → column_continuity → door_clear_width → span_depth_cantilever`. Two rules got a
+second turn; the queue REFILLED at t=21 and t=38 (`queued=3→4`, `1→2`) when sets came back into frame,
+which is §77.2's re-pulse gate still doing its job through the queue rather than around it.
+
+**83.4 TWO HONEST NUMBERS THE BAKE PRODUCED, neither hidden.**
+- **`boxes=0` on 9 of 53 seconds.** The scene-holder is off screen for part of its own slot, so the
+  slot is partly spent on a set nobody can see. This is §82.1's accepted cost stated plainly ("some
+  maybe missed"), and the `abandoned` rule only frees the slot after the holder has been gone
+  `BOX_LINGER_S` (2s). 17% of the film. **Recorded, not fixed** — fixing it means either a shorter
+  abandon threshold (flicker risk on brief occlusion) or re-selecting mid-slot, and neither should be
+  chosen before the user has seen the clip.
+- **`boxes=2` on 13 of 53 seconds.** The handover: the outgoing box fading across `BOX_LINGER_S` over
+  the newcomer. This is the ONLY moment two boxes coexist, and it is the §77.2 collision nudge's
+  remaining live use.
+
+**83.5 OPEN, RAISED BY THE USER, DELIBERATELY NOT ACTED ON.** User, on seeing §83.4: *"The pulse or
+wave fade off should also be earnest during the transition. But if not it is OK, let's eyeball first."*
+So it waits for the eyeball. **The fact to check it against:** in a NORMAL handover nothing is cut —
+the §78/§79 envelope is 4.1s inside a 5.0s slot, so the wave has released and gone dark ~0.9s before
+the next set takes the scene. The only thing crossing a handover is the outgoing BOX. A pulse can be
+cut mid-flight only on the `abandoned` path, and there its members are already off screen.
+
+**83.6 REPRODUCING THE BAKE.** Terminal's DB carries the flag columns (`§CINEMA_PATH_RESTORE ...
+flagCol=true buildup=1 roomTitle=1 reveal=1`, so §59.9's `flagCol=true` branch applies and the saved
+path decides), but the flags were forced anyway — they resolve to the same values, and forcing removes
+the ambiguity §59.6a got wrong once already:
+```
+node cli_silent_bake.js --db Terminal_silent --out out/Terminal_lowres_v82.mp4 --gpu real \
+  --width 854 --height 480 --fps 15 --buildup --label --reveal --clash --measure --storey-reveal \
+  --log out/Terminal_lowres_v82.log
+```
+`buildings/*_silent.db` are SYMLINKS to `~/Downloads/` (§59.6b's practice), verified before the run.
+The per-second evidence line now carries the queue: `§RULE_FILM_SETS ... active=<rule> queued=<n>
+waiting=<rules>` — grep that, never the frames.
+
+### 84. SPEC (2026-09-12) — §SANITY_EXIT_STAT: the longest-path-to-exit figure on the FLASHING Sanity
+### box, in the live panel's own wording
+**Origin: the user.** *"The main BIM View session has taken on the 'Longest path to exit - ## steps'
+which originated in specs here, so put that in also for next task when Sanity HUD is flashing
+messages."* It did originate here — `viewer/rule_checklist.js`'s own comment on `feat/structural-sanity`
+cites `prompts/MEP_CLASH_REVEAL_MOVIE.md §59.4` as the model it was built from.
+
+**84.1 THREE SURFACES, TWO STRINGS — the ruling.** The viewer session flagged, correctly, that its
+live-panel string is a strict SUBSET of the film's closing card and asked which way to converge. The
+user ruled on the closing card directly — *"So it be in the closing HUD cards? OK keep that rich."* So:
+| surface | string | status |
+|---|---|---|
+| closing HUD card (`cpe_resource_panel.js:352`) | `longest distance to exit — 80s / ~107 steps (96.4m @ 1.2 m/s est.)` | **unchanged, stays rich** |
+| live panel status bar (`rule_checklist.js:_rcShowLongestExitStatus`, `feat/structural-sanity`) | `Longest path to exit — ~107 steps` | shipped there, unchanged |
+| **in-film Sanity set box (THIS SPEC)** | `Longest path to exit — ~107 steps` | **to build** |
+**Why the film box takes the SHORT string and not the rich one:** the closing card is a held still the
+viewer can read at leisure; the set box flashes for one 5s slot on a moving frame. §73.0 already ruled
+this axis once — *a film is not a web page* — and the same logic decides the budget here. Rich where
+there is time to read, short where there is not. **This is not the live panel growing or the film
+shrinking; it is two different surfaces each carrying what it can hold**, which is why the viewer
+session was right not to assume a direction.
+
+**84.2 WHERE IT GOES — the `circulation_distance` box only, as a THIRD LINE.**
+- **That rule OWNS the number.** It is the worst `ratio` across `circulation_distance` rows —
+  `RoomGraph.escapeRoute()/shortestPath()` metres, `egress_sanity.js`'s own field. On a
+  `door_clear_width` or structural box it would be a true number attached to the wrong finding.
+- **A line, never a ninth box.** §82 has just spent a whole session cutting the box count from 8 to 2;
+  a new box would hand it straight back. The box already renders `lines[]` in a loop and sizes to the
+  widest, so a third line costs one array entry.
+- **Its own line, under `19 flagged`.** The total is a COUNT and the exit figure is a MAX. On one line
+  they read as one quantity.
+- The number is already computed — `_stats.maxExitDistSteps` (`rule_findings_film.js:281`), built once
+  at evaluate time. Nothing is re-measured per frame.
+
+**84.3 THE `~` IS MANDATORY, not decoration.** `STEP_M = 0.75` has no precedent anywhere in this
+codebase — this file's own header says so, and `rule_checklist.js`'s comment says it independently
+("a standard adult-stride ergonomic convention from OUTSIDE this project"). Both surfaces already
+write `~`. **A HUD line that drops it states an estimate as a measurement**, which is the one thing
+the Prime Directive forbids outright. Null, never `0 steps`, when no `circulation_distance` row
+exists — both existing implementations already hold that contract.
+
+**84.4 ⚠ THE §65 HAZARD, CONCRETE AND ALREADY REAL.** `0.75` and the `Math.round(metres / 0.75)`
+conversion are now written TWICE, on two branches that have not met: `STEP_M` in
+`rule_findings_film.js` and an inline `0.75` in `_rcLongestExitSteps` on `feat/structural-sanity`. The
+arithmetic is identical TODAY — both round the same way, so the two surfaces agree — and that is
+exactly the state §65 warns about: *share the implementation, never copy the values; two copies drift
+the moment either is retuned.* **When PR #1715 lands and `feat/structural-sanity` merges into this
+branch, extract ONE helper (constant + conversion + string) and have all three surfaces call it.** Do
+not build a third copy for the film box in the meantime — read `_stats.maxExitDistSteps`, which is the
+film's single existing source.
+
+**84.5 BRANCH STATE — do NOT look for this on main.** `_rcShowLongestExitStatus` lives on bim-ootb
+`feat/structural-sanity` (**PR #1715**, in CI as of 2026-09-12, user mid-merge). Verified today:
+`git merge-base --is-ancestor origin/feat/structural-sanity feat/rule-findings-film` → **NOT an
+ancestor**, and the string is absent from `origin/main`. §81's warning that `feat/structural-sanity`
+is still not in the tree is the same fact; this spec is the second thing now waiting on it.
+
+**84.6 TESTS.**
+- **E1 RIGHT-BOX-ONLY** — the exit line appears on the `circulation_distance` box and on NO other set's
+  box, structural or egress. Fails any implementation that puts a true number on the wrong finding.
+- **E2 ESTIMATE-MARKED** — the rendered line contains `~`. Assert the drawn text, not the constant.
+- **E3 DROPPED-NEVER-ZERO** — with no `circulation_distance` row the box has two lines, not a third
+  reading `0 steps`.
+- **E4 SAME-NUMBER-AS-THE-CARD** — the box's step count equals `_stats.maxExitDistSteps`, i.e. the
+  closing card and the flashing box cannot disagree about the same building.
+- **E5 STILL-ONE-BOX** — adding the line does not add a box: §82's Q1 concurrency cap still holds with
+  the exit line present. The check that stops §84 from quietly undoing §82.
