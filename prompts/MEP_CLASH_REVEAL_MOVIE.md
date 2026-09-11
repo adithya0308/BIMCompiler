@@ -4052,3 +4052,43 @@ no wrong storey lit). The `' Ceiling'`/`' TOS'`/`'Unknown'` exclusions work (HHS
 elements at mean z 5.16, is correctly absent from `§STOREY_REVEAL_LIST`). No tint bleeds onto a
 neighbouring storey. `§STOREY_REVEAL_MARKERS_OFF` fires once at window open and restores at bake exit,
 as designed.
+
+### 61. SPEC (2026-09-11) — §MEASURE_TITLE_INK: the Measure box title goes blue, and two standing rules
+**User, after watching `HHS_lingerfit2_854x480.mp4`: "the yellow HUD coloring is not helping optics.
+Better colour schema? ... Don't ever touch lighting of scene. HUD is isolated colour schema. Replace
+yellow with blue is better contrast."**
+
+**61.0 TWO STANDING RULES THIS ESTABLISHES, wider than this change.**
+1. **NEVER touch scene lighting.** §60.3's recommendation to raise `cl.emissiveIntensity` on the
+   storey-reveal tint is **withdrawn** — it changes how the scene is lit and is out of bounds. Any
+   future "the highlight is too dark" work must find a non-lighting remedy or stop and ask. The
+   measurement in §60.3 (tint luma 24-95 vs ~200 on adjacent panels) stands as a FACT; only the
+   proposed remedy is retracted.
+2. **The HUD is an isolated colour schema.** HUD/overlay ink is chosen for legibility against the HUD
+   plate and is NOT coupled to the 3D scene palette. A colour may therefore differ between the two
+   surfaces on purpose; do not "unify" them.
+
+**61.1 SCOPE — the Measure box title ONLY, decided by the user against the wider option.**
+`#ffd600` (§7's measurement ink) appears in SIX film-HUD places: `cpe_film_boxes.js:251` (the Measure
+box title default) plus the dimension-cue overlays in `cpe_linear_beat.js:40`, `cpe_flyout_beats.js:32`,
+`cpe_indoor_beats.js:25`, `cpe_flythru_cues.js:496` and `cpe_flythru_dims.js`. The user was offered
+all six vs the box title alone and **chose the box title alone**. The dimension cues stay `#ffd600`;
+that mixed palette is a deliberate, recorded choice, not an oversight — do not "finish the job" later
+without asking.
+
+**61.2 THE COLOUR — `#4fc3f7`, extracted not invented.** Already used 190 times across `viewer/*.js`,
+the established project blue. `#2979ff` was offered and rejected: it is the storey-reveal Level 1 blue
+and §60.3 measured that hue reading at luma ~95 on a dark ground — dark enough to repeat the contrast
+problem this change exists to remove, inverted.
+
+**61.3 WHAT MUST NOT CHANGE.** `drawMeasureEntry` reads `head.ink || <default>`; §59's category inks
+(`structural #ffaa33`, `egress #cc4444`) are QUEUED inks and must keep overriding the default. Changing
+the fallback must not change what a Sanity entry looks like.
+
+**61.4 TESTS — extend `viewer/tests/witness_film_boxes.js`, do not fork.** Its recording context does
+not capture `fillStyle` per draw today; capturing it is an additive harness change.
+- **M1 MEASURE-TITLE-DEFAULT-IS-BLUE** — an entry posted with NO ink draws its title in `#4fc3f7`,
+  not `#ffd600`. Fails against the pre-change file.
+- **M2 CATEGORY-INK-STILL-OVERRIDES** — an entry posted WITH `#ffaa33` still draws `#ffaa33`, proving
+  §61.3: the Sanity look is unchanged by the new default.
+- **M3 ROWS-STAY-WHITE** — the body rows remain `#fff`; only the title colour moved.
