@@ -4201,3 +4201,50 @@ rows stay `name · storey · value`.
 - **G4 NULL-RATIO-STILL-SHOWS-SEVERITY** — `column_continuity` still renders `CRITICAL` (§63.1).
 - **G5 NAME-TRIM-IS-LOSSLESS-AND-DETERMINISTIC** — the two real HHS strings above trim exactly as
   shown; a name without `:` is unchanged; a name that is ONLY digits is not emptied.
+
+### 64. ⛔ CORRECTION (2026-09-11) — §MEASURE_PLATE_SAME_HUE: the plate is filled with the title's own
+### colour, so every Measure entry is same-hue-on-same-hue
+**User: "i don't know how to tell you that yellow on yellow is bad."** They were right and the earlier
+analysis in §61 was wrong about the cause.
+
+**THE DEFECT, in two lines that §59.4 put next to each other.** `viewer/cpe_film_boxes.js`:
+```
+:246   plate(ctx, b, head.ink);                                  // plate filled with the ink…
+:134   ctx.fillStyle = tint ? _hexToRgba(tint, 0.32) : 'rgba(0,0,0,0.45)';
+:251   ctx.fillStyle = head.ink || '#4fc3f7';                     // …and the title drawn in the SAME ink
+```
+The plate takes the entry's ink at alpha 0.32 and the title takes the same ink at full strength. By
+construction EVERY tinted entry is its own hue on its own hue:
+- ordinary Measure entries — the four callers that pass `INK = '#ffd600'` (`cpe_slab_beat.js:518`,
+  `cpe_flythru_cues.js:449` and `:507`, `cpe_flyout_beats.js:243`) ⇒ **yellow on yellow**
+- `Structural` `#ffaa33` ⇒ orange on orange · `Safety` `#cc4444` ⇒ red on red
+Confirmed on the real bake `out/HHS_hud_854x480.mp4` at t=20s: a `Hall-Corridor` title in `#ffd600`
+sitting on a `#ffd600` plate.
+
+**§61's diagnosis was wrong and is corrected here.** §61 read the complaint "the yellow HUD colouring
+is not helping optics" as *the hue is wrong* and changed the fallback colour. The hue was never the
+problem — the **contrast** was, and changing the fallback could not fix it because the four callers
+above pass an explicit ink that overrides the fallback entirely. §61's change is kept (a no-ink entry
+does now draw blue on a black plate, which is correct and higher-contrast) but it was not the fix.
+
+**64.1 THE FIX — the plate stops using the title's colour.** `drawMeasureEntry` calls `plate(ctx, b)`
+with no tint, so the Measure box returns to the fixed `rgba(0,0,0,0.45)` every other box already uses,
+and the ink survives on the TITLE only. This is a revert of §59.4's plate-tint half, not a new design:
+coloured title on the project's standard dark plate is the combination that shipped and read correctly
+before §59. The `tint` parameter and `_hexToRgba` become unreferenced and are removed with it — no
+dead code left behind for a future reader to re-enable.
+
+**64.2 WHAT THIS COSTS.** §59.4 wanted the plate tint as a second, redundant channel for the category.
+That channel goes away; the category is still carried by the title colour (`#ffaa33` / `#cc4444`) AND
+by the title text itself ("Structural — …" / "Safety — …"). No information is lost, only a duplicate
+encoding that was destroying legibility. If a background hint is ever wanted again it must be a colour
+DIFFERENT from the title's — never the same hex — and that is a new design needing its own approval.
+
+**64.3 TESTS — extend `viewer/tests/witness_film_boxes.js`.** Its recording context captures
+`fillStyle` per text draw (added in §61.4); it must now capture it for rect draws too.
+- **P1 PLATE-IS-NEVER-THE-TITLE-COLOUR** — for an entry with ink `#ffaa33`, the plate fill and the
+  title fill are DIFFERENT. The single claim that names the bug. Fails pre-fix.
+- **P2 PLATE-IS-THE-STANDARD-DARK** — the Measure plate fill is `rgba(0,0,0,0.45)`, identical to the
+  HUD/status boxes', with and without an ink.
+- **P3 TITLE-INK-SURVIVES** — the title is still `#ffaa33` with that ink, and `#4fc3f7` without
+  (§61 intact).
