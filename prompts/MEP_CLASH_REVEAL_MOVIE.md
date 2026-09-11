@@ -4786,3 +4786,60 @@ is on screen, re-placed only on a frame-size change, and unpinned once the set h
 `BOX_LINGER_S`. A collision nudge writes back to the pin so it does not re-nudge every frame.
 **P10** drives the camera so the projected anchor jumps corner to corner and asserts the box does not
 move with it. 19/19.
+
+### 81. 🏁 RESUME HERE — session close 2026-09-12. Sanity went from 2 findings shown to one box per
+### rule with a directional wave. Storey-reveal and bake memory are the open work.
+**Branch:** bim-ootb `feat/rule-findings-film` @ `2aa71262`, 42 commits this session. `feat/measure-boxes`,
+`fix/storey-reveal-list` and `fix/batch-bucket-class-paint` are all merged into it. **`feat/structural-
+sanity` is still NOT an ancestor** — check before assuming the tree is whole.
+
+**81.1 WHAT LANDED, in order.** §59.7 room-injection path gap (two silent defects: a factory-time
+`RoomGraph` bind, and `storey_footprint.js` never added to the browser load list — `exits=0
+noRaster=133/133` became `exits=3 noRaster=0`). §59.8 linger-fit. §61-§66 HUD optics. §67 room geometry
+from `spatial_structure` (71 HHS / 6 Hospital egress findings had NO marker at all, silently). §69 hide
+counting. §70-§72 the clash model. §73-§76 media schema. §77-§80 **the design the user arrived at
+himself**: one box per RULE stating the set total, a wave that fills outward, holds, then releases
+outward, filled see-through markers, pinned boxes. Hospital's 509 findings are six rules; HHS's 215 are
+three — §70's per-element labels had been repeating six sentences hundreds of times.
+
+**81.2 OPEN — STOREY-REVEAL, the user's own words: "the storey reveal still need work".** §60 measured
+it and only two of seven findings were fixed (§60.1 Roof Level, §60.2 window seconds). Still open, all
+with evidence in §60:
+- **§60.3 the highlight is DARKER than the facade it highlights** — tint luma 24-95 against ~200 on
+  adjacent panels. The obvious remedy (`emissiveIntensity`) is **withdrawn under §61.0's standing rule:
+  never touch scene lighting.** A non-lighting remedy is needed, or ask.
+- **§60.4 the window opens on a hard camera cut** — HHS's `rise=2.7` makes the window the whole
+  pullback, so Level 1's slot is spent in the first second after a cut.
+- **§60.6 §58.3's black patch** — 6,821→17,483 near-black px in one frame, persisting 1.27s. Needs
+  §58.3's own `--tap` raycast inside a real-GPU bake.
+- **§60.7 Level 1 loses ~90% of its facade** — 1,013 m² of 1,122 m² is `IfcCurtainWall`, skipped by
+  `_applyTint`'s regular-mesh guard. Add a skip counter and read it off a bake before patching.
+
+**81.3 OPEN — BAKE MEMORY, the user's second named item.** Hospital at 720p and again at 1080p was
+**killed twice by the system during MODEL LOAD**, before the first frame — puppeteer threw from
+`FrameManager` both times, and `dmesg` showed no OOM kill, so it was the harness watchdog reacting to a
+spike, not the kernel. Both retries then succeeded with no other change, and the eventual 1080p
+Hospital bake ran 98 min clean. So it is a load-time spike, not a leak. **Facts for whoever picks this
+up:** Hospital is a 300MB DB / 64,150 elements; the spike is at load, not during frames; 24GB was free
+immediately after each kill; HHS (80MB) never triggered it. Worth measuring peak RSS across the load
+phase before changing anything.
+
+**81.4 ALSO OPEN, smaller.** §66 HHS's clash pullback window is inverted (`reservation-exceeds-span`)
+so its disc-pair cards never draw — behaviour is correct, the film just loses that content on short
+films. §O.3 the HHS ceiling panel still appears ~49 project-days early (cause unattributed; the
+`§PERF_INCR` delta skip at `time_machine.js:1535/1597` is the prime suspect, and **must be chased with
+a witness plus §-tagged logging, never by looking at frames** — see §O and the user's "it's GIGO").
+`§RULE_TINT_NO_GEOM` names 1 HHS / 15 Hospital synthetic `CORRIDOR_ROOM::` nodes with no geometry;
+correctly reported, nothing to draw.
+
+**81.5 THREE PROCESS LESSONS THIS SESSION KEEPS RE-LEARNING — read before the next change.**
+1. **"The fix is in" ≠ "the fix fires."** §75 shipped a storey split that never fired: the real log said
+   `filled=0 blank=112` twice, once after the fix and once after the "fix to the fix", because the
+   split was attached to one of TWO composers while this file's own comment says "ONE composer, TWO
+   callers". Grep a real log before reporting anything done.
+2. **A test that passes without reaching its subject is not a test.** Four times: §66's C3 (a valid
+   window that never reached the message), §70.7's K7 (5 findings against a cap of 8), §77's P1 (5
+   findings across 5 rules, grouping nothing) and P4 (sampled at `since=0` where every glow is 0).
+3. **A computed value with no consumer is worth nothing.** §78.1 — the depth wave was calculated
+   per-member for a whole day and then discarded, because `ruleTintShowOnly` took a boolean. The
+   witness asserted the numbers and never that anything read them.
