@@ -4053,45 +4053,10 @@ elements at mean z 5.16, is correctly absent from `§STOREY_REVEAL_LIST`). No ti
 neighbouring storey. `§STOREY_REVEAL_MARKERS_OFF` fires once at window open and restores at bake exit,
 as designed.
 
-### 61. SPEC (2026-09-11) — §MEASURE_TITLE_INK: the Measure box title goes blue, and two standing rules
-**User, after watching `HHS_lingerfit2_854x480.mp4`: "the yellow HUD coloring is not helping optics.
-Better colour schema? ... Don't ever touch lighting of scene. HUD is isolated colour schema. Replace
-yellow with blue is better contrast."**
-
-**61.0 TWO STANDING RULES THIS ESTABLISHES, wider than this change.**
-1. **NEVER touch scene lighting.** §60.3's recommendation to raise `cl.emissiveIntensity` on the
-   storey-reveal tint is **withdrawn** — it changes how the scene is lit and is out of bounds. Any
-   future "the highlight is too dark" work must find a non-lighting remedy or stop and ask. The
-   measurement in §60.3 (tint luma 24-95 vs ~200 on adjacent panels) stands as a FACT; only the
-   proposed remedy is retracted.
-2. **The HUD is an isolated colour schema.** HUD/overlay ink is chosen for legibility against the HUD
-   plate and is NOT coupled to the 3D scene palette. A colour may therefore differ between the two
-   surfaces on purpose; do not "unify" them.
-
-**61.1 SCOPE — the Measure box title ONLY, decided by the user against the wider option.**
-`#ffd600` (§7's measurement ink) appears in SIX film-HUD places: `cpe_film_boxes.js:251` (the Measure
-box title default) plus the dimension-cue overlays in `cpe_linear_beat.js:40`, `cpe_flyout_beats.js:32`,
-`cpe_indoor_beats.js:25`, `cpe_flythru_cues.js:496` and `cpe_flythru_dims.js`. The user was offered
-all six vs the box title alone and **chose the box title alone**. The dimension cues stay `#ffd600`;
-that mixed palette is a deliberate, recorded choice, not an oversight — do not "finish the job" later
-without asking.
-
-**61.2 THE COLOUR — `#4fc3f7`, extracted not invented.** Already used 190 times across `viewer/*.js`,
-the established project blue. `#2979ff` was offered and rejected: it is the storey-reveal Level 1 blue
-and §60.3 measured that hue reading at luma ~95 on a dark ground — dark enough to repeat the contrast
-problem this change exists to remove, inverted.
-
-**61.3 WHAT MUST NOT CHANGE.** `drawMeasureEntry` reads `head.ink || <default>`; §59's category inks
-(`structural #ffaa33`, `egress #cc4444`) are QUEUED inks and must keep overriding the default. Changing
-the fallback must not change what a Sanity entry looks like.
-
-**61.4 TESTS — extend `viewer/tests/witness_film_boxes.js`, do not fork.** Its recording context does
-not capture `fillStyle` per draw today; capturing it is an additive harness change.
-- **M1 MEASURE-TITLE-DEFAULT-IS-BLUE** — an entry posted with NO ink draws its title in `#4fc3f7`,
-  not `#ffd600`. Fails against the pre-change file.
-- **M2 CATEGORY-INK-STILL-OVERRIDES** — an entry posted WITH `#ffaa33` still draws `#ffaa33`, proving
-  §61.3: the Sanity look is unchanged by the new default.
-- **M3 ROWS-STAY-WHITE** — the body rows remain `#fff`; only the title colour moved.
+### 61. ⛔ RETIRED — §MEASURE_TITLE_INK. The diagnosis was WRONG: it blamed the hue when the
+### fault was contrast (§64), and the fallback it changed is reached by almost nothing. What SURVIVES
+### is §61.0's two standing rules, restated by §73.0: **never touch scene lighting**, and **the HUD is
+### an isolated colour schema**. Full story in §76.5 RECAP.
 
 ### 62. SPEC (2026-09-11) — §RULE_TINT_SHINE_THROUGH: the Sanity 3D marker is occluded, opt-in fix
 **User: "hard to pick out Sanity occurrences, one was late show when storey reveal ended, but no
@@ -4202,84 +4167,13 @@ rows stay `name · storey · value`.
 - **G5 NAME-TRIM-IS-LOSSLESS-AND-DETERMINISTIC** — the two real HHS strings above trim exactly as
   shown; a name without `:` is unchanged; a name that is ONLY digits is not emptied.
 
-### 64. ⛔ CORRECTION (2026-09-11) — §MEASURE_PLATE_SAME_HUE: the plate is filled with the title's own
-### colour, so every Measure entry is same-hue-on-same-hue
-**User: "i don't know how to tell you that yellow on yellow is bad."** They were right and the earlier
-analysis in §61 was wrong about the cause.
+### 64. ⛔ RETIRED — §MEASURE_PLATE_SAME_HUE. Found the real defect: the plate was filled with the
+### title's OWN ink, so every entry was hue-on-hue. Fixed, then superseded by §73.3, which made the
+### plate see-through again. See §76.5 RECAP.
 
-**THE DEFECT, in two lines that §59.4 put next to each other.** `viewer/cpe_film_boxes.js`:
-```
-:246   plate(ctx, b, head.ink);                                  // plate filled with the ink…
-:134   ctx.fillStyle = tint ? _hexToRgba(tint, 0.32) : 'rgba(0,0,0,0.45)';
-:251   ctx.fillStyle = head.ink || '#4fc3f7';                     // …and the title drawn in the SAME ink
-```
-The plate takes the entry's ink at alpha 0.32 and the title takes the same ink at full strength. By
-construction EVERY tinted entry is its own hue on its own hue:
-- ordinary Measure entries — the four callers that pass `INK = '#ffd600'` (`cpe_slab_beat.js:518`,
-  `cpe_flythru_cues.js:449` and `:507`, `cpe_flyout_beats.js:243`) ⇒ **yellow on yellow**
-- `Structural` `#ffaa33` ⇒ orange on orange · `Safety` `#cc4444` ⇒ red on red
-Confirmed on the real bake `out/HHS_hud_854x480.mp4` at t=20s: a `Hall-Corridor` title in `#ffd600`
-sitting on a `#ffd600` plate.
-
-**§61's diagnosis was wrong and is corrected here.** §61 read the complaint "the yellow HUD colouring
-is not helping optics" as *the hue is wrong* and changed the fallback colour. The hue was never the
-problem — the **contrast** was, and changing the fallback could not fix it because the four callers
-above pass an explicit ink that overrides the fallback entirely. §61's change is kept (a no-ink entry
-does now draw blue on a black plate, which is correct and higher-contrast) but it was not the fix.
-
-**64.1 THE FIX — the plate stops using the title's colour.** `drawMeasureEntry` calls `plate(ctx, b)`
-with no tint, so the Measure box returns to the fixed `rgba(0,0,0,0.45)` every other box already uses,
-and the ink survives on the TITLE only. This is a revert of §59.4's plate-tint half, not a new design:
-coloured title on the project's standard dark plate is the combination that shipped and read correctly
-before §59. The `tint` parameter and `_hexToRgba` become unreferenced and are removed with it — no
-dead code left behind for a future reader to re-enable.
-
-**64.2 WHAT THIS COSTS.** §59.4 wanted the plate tint as a second, redundant channel for the category.
-That channel goes away; the category is still carried by the title colour (`#ffaa33` / `#cc4444`) AND
-by the title text itself ("Structural — …" / "Safety — …"). No information is lost, only a duplicate
-encoding that was destroying legibility. If a background hint is ever wanted again it must be a colour
-DIFFERENT from the title's — never the same hex — and that is a new design needing its own approval.
-
-**64.3 TESTS — extend `viewer/tests/witness_film_boxes.js`.** Its recording context captures
-`fillStyle` per text draw (added in §61.4); it must now capture it for rect draws too.
-- **P1 PLATE-IS-NEVER-THE-TITLE-COLOUR** — for an entry with ink `#ffaa33`, the plate fill and the
-  title fill are DIFFERENT. The single claim that names the bug. Fails pre-fix.
-- **P2 PLATE-IS-THE-STANDARD-DARK** — the Measure plate fill is `rgba(0,0,0,0.45)`, identical to the
-  HUD/status boxes', with and without an ink.
-- **P3 TITLE-INK-SURVIVES** — the title is still `#ffaa33` with that ink, and `#4fc3f7` without
-  (§61 intact).
-
-### 65. SPEC (2026-09-11) — §MEASURE_PLATE_MATCHES_HUD: the film boxes use the main HUD's own plate
-**User: "just make background same as main HUD which has no issue."** §64 removed the same-hue fill
-and left the Measure box on a flat `rgba(0,0,0,0.45)`. That is not the same background the main HUD
-uses, so this closes the gap the user actually named.
-
-**65.1 WHAT THE MAIN HUD ACTUALLY DRAWS** — `viewer/cpe_resource_panel.js` `_plate` (~L532), the
-right-column stat cards: a blurred backdrop of the pixels already behind it (`_glass`, 9px), then
-`rgba(0,0,0,0.28)` over that, then a 1px `rgba(255,255,255,0.20)` edge. When the blur is unavailable
-(`ctx.filter` or `document` missing — a Node witness, a headless path) `_glass` returns false and the
-fill falls back to `rgba(0,0,0,0.45)`, which is exactly what the film boxes were already using.
-
-**65.2 SHARE THE IMPLEMENTATION, DO NOT COPY THE VALUES.** `_plate` is promoted to
-`A.cpePanelPlate(ctx, x, y, bw, bh, rad)` and `cpe_film_boxes.js`'s `plate()` calls it. Reproducing
-the three values in a second file would let the two surfaces drift the moment either is retuned —
-the same "ONE implementation for both modes" discipline `_plate`'s own comment already states, and the
-same reason `cpe_film_boxes.js`'s plate comment gives for one implementation across its boxes.
-`plate()` keeps the flat fill as a fallback for when `cpe_resource_panel.js` is not loaded; since that
-is also the panel's own no-blur fallback, the two agree even in that case.
-
-**65.3 SCOPE — this reaches all THREE film boxes, not only the Measure box.** `plate()` is shared by
-the HUD, status and Measure boxes. Changing only the Measure box would leave one frosted box beside
-two flat ones, i.e. trade the reported inconsistency for a new one. The visual delta for the other two
-is small (flat 0.45 → frosted 0.28 plus a hairline edge) and it makes the film's whole HUD one system
-with the main panel. Recorded here because it is wider than the words of the request.
-
-**65.4 TESTS — extend `viewer/tests/witness_film_boxes.js`.**
-- **P4 DELEGATES-TO-THE-HUD-PLATE** — with `A.cpePanelPlate` present, the Measure box calls it exactly
-  once with that box's own x/y/w/h. Proves it shares rather than imitates.
-- **P4b NO-LOOK-ALIKE-UNDERNEATH** — when delegating, `plate()` paints no fill of its own.
-- The pre-existing P2/P2b keep asserting the flat fallback, which is the path the mock A (no
-  `cpePanelPlate`) exercises — so both branches stay covered.
+### 65. ⛔ RETIRED — §MEASURE_PLATE_MATCHES_HUD. Superseded by §73.3: the plate matches
+### `cpe_path_overview.js:208` (0.28 frosted), not the opaque value set here. The rule that SURVIVES:
+### **share the implementation, never copy the values** — `A.cpePanelPlate`. See §76.5 RECAP.
 
 ### 66. SPEC (2026-09-11) — §CLASH_WINDOW_DIAGNOSTIC: an inverted window was reported as a short one
 **Found while auditing this session's messages at the user's request ("important to check perf and
@@ -4374,45 +4268,9 @@ it without THREE.
 the run aborts.** Sibling suites unchanged: `witness_rule_findings_film.js` 35/35,
 `witness_film_boxes.js` 14/14.
 
-### 68. SPEC (2026-09-11) — §HUD_LEGIBLE: stop judging legibility by eye, measure it
-**User: "I can't understand your words as usual on the coloring. Just make sure everything is
-legible."** Colour was explained three times this session and got it wrong three times (§61 blamed the
-hue, §64 found the real same-hue plate fill, §65 matched the plate). The failure was METHOD: legibility
-was being argued about instead of measured. §68 replaces the argument with a number and a test.
-
-**68.1 THE MEASUREMENT.** WCAG 2.1 contrast ≥ 4.5:1, computed on the ACTUAL composite — the plate is
-black at its alpha over the scene, the text composites onto that plate, and the ratio is text-against-
-plate. Two backdrops, because a film frame spans both: a night ground (`#101010`) and a sunlit white
-facade / sky (`#e8e8e8`).
-
-**68.2 THE RESULT — EVERY ink failed, and the bright scene is why.** At the shipped plate (0.45 flat /
-0.28 frosted) the worst-case ratios were: Measure title 1.97, Structural 2.08, Safety **1.19**, body
-rows 3.95, card label 3.47, card sub-text 2.46 — **all six under 4.5**. The plate is translucent, so a
-bright facade behind it stays bright and every ink sits on a light ground. This is exactly the case
-eyeballing a few dark frames could never catch, and the reason §61/§64/§65 each fixed something real
-and still left the HUD unreadable in bright passages.
-
-**68.3 SAFETY RED CANNOT BE SAVED BY DARKENING THE PLATE.** `#cc4444` was swept against plate alphas
-0.45→0.90 and fails at every one (1.19 → 3.82); at a fully opaque plate it still only reaches 4.42.
-It is too dark to be text on any HUD. Changed to **`#e57373`** — same red family, lighter, 5.26:1.
-`#ffaa33` (Structural) passes unchanged. **The interactive Rule panel keeps `#cc4444`** — different
-surface, not part of this change.
-
-**68.4 WHAT SHIPS.** Plate alpha `0.28`/`0.45` → **`0.85`** (`A.cpePanelPlate`, and `cpe_film_boxes.js`'s
-matching fallback); egress ink `#cc4444` → `#e57373` (`rule_findings_film.js` CATEGORY_COLOR and the
-`cpe_resource_panel.js` safety card); card sub-text `rgba(255,255,255,0.60)` → `0.78`. Worst case now:
-title 7.84, Structural 8.27, Safety 5.26, rows 15.72, card label 12.48, card sub 10.09 — all clear.
-
-**68.5 TESTS — `witness_hud_legibility.js` (new).** Every value is SLICED OUT OF THE SOURCE FILES and
-evaluated, never re-typed, so retuning any colour or alpha re-runs this check automatically instead of
-silently dropping under the threshold.
-- **H1** — one check per ink (8 of them, including both plate paths), worst case across both scenes.
-- **H2** — the plate alpha tested is the one in the source.
-- **H3** — asserts the BRIGHT scene really is the limiting case for at least one ink, so the suite
-  cannot pass by only ever checking the easy direction. That is the specific blind spot of §61-§65.
-**10/10. Falsified: reverting only `rule_findings_film.js` puts `#cc4444` back and the run exits 1.**
-Sibling suites re-run and updated where they pinned an old value: `witness_rule_findings_film.js`
-35/35, `witness_film_boxes.js` 14/14 + block 10/10, `tests/test_rule_mode_tint.js` 23/23.
+### 68. ⛔ RETIRED — §HUD_LEGIBLE. Its WCAG 4.5 bar was deliberately overridden by §73.0 and its
+### opaque plate reverted by §73.3. What SURVIVES: legibility is MEASURED, never argued — and the
+### measurement now runs against the text shadow, not the plate (§76). See §76.5 RECAP.
 
 ### 69. AUDIT (2026-09-11) — §RULE_TINT_NO_COLLATERAL: does the Sanity tint mark anything incidental?
 **User: "During movie are there any incidental element marked for the Sanity occurrence?"**
@@ -4437,143 +4295,16 @@ checked against one number instead of re-deriving this audit.
 **69.2 NOT CHANGED.** The hiding behaviour itself is untouched — it is shared with interactive Rule
 Mode (§62.4 already ruled that out of scope). This section adds counting, not a behaviour change.
 
-### 70. SPEC (2026-09-11) — §RULE_FILM_CLASH_MODEL: cut the storey-reveal tie, show findings like clashes
-**User: "Why [did you] tie them in the first place? Isn't it supposed to appear during movie similar to
-clash?" then "Now you know how to solve. Do it."**
+### 70. ⛔ RETIRED by §77 — §RULE_FILM_CLASH_MODEL: per-element labels ranked TOP_N=8. Cutting the
+### storey tie was right; labelling per ELEMENT was not. §77 replaced it with one box per RULE.
+### See §76.5 RECAP.
 
-**70.1 WHY THE TIE EXISTED — nobody asked for it.** §59.3 considered giving each finding its own
-screen-time computation, rejected that as "a second, separate feature", and reused the storey-reveal
-sequencing other Measure beats already rode. It was a shortcut chosen in spec, never a requirement.
-Findings therefore inherited the storey window's limits, and **three of this session's problems trace
-to that one decision**: only 2 findings shown out of 215 (HHS) / 509 (Hospital); §59.8's NOFIT, which
-exists only because a storey slot can be too short; and §60.5's caption naming one storey while another
-is lit. None of them are properties of Sanity.
+### 71. ⛔ RETIRED by §77 — §RULE_FILM_VISIBLE_FIRST + §RULE_TINT_ROOM_ANCHOR. The room-anchor half
+### STILL STANDS (a room is marked by a POINT, not by its extent); the ranking half went with §70.
+### See §76.5 RECAP.
 
-**70.2 THE MODEL TO COPY — clash, exactly as it already works.** `clash_film.js` puts its markers into
-the scene ONCE and they persist for the whole film; `clash_labels.js` then, per frame, ranks every pair
-by camera distance, admits the `TOP_N = 8` nearest with `RANK_MARGIN_M = 0.6` hysteresis, drops
-anything outside the frustum, walks the rest rejecting screen-space overlaps, and fades each in over
-`FADE_S = 0.5` film seconds. Real evidence it works at scale:
-`§CLASH_LABELS frame=0 eligible=8 labelled=1 skippedOverlap=7`. No window, no per-storey slot, no cap
-at 2. **Reuse these four constants and this shape verbatim — do not invent a second ranking scheme.**
-
-**70.3 WHAT CHANGES IN `rule_findings_film.js`.**
-- **Markers: ALL findings, once, for the whole film.** `showRuleModeTint(guidCat, CATEGORY_COLOR,
-  {shineThrough:true})` already does exactly this and is already shine-through (§62); it is currently
-  handed 2 guids and must be handed every finding's guid instead. Cost is one `InstancedMesh` per
-  colour regardless of count (`rule_checklist.js`), so 509 markers cost what 2 did.
-- **Labels: per frame, clash's algorithm.** Rank by distance from `A.camera` (the same handle
-  `cinema_maxq.js:1970` passes to `clashLabels.update`), TOP_N nearest, frustum test, overlap walk,
-  fade. Label text is the §63 messaging already settled: trimmed name, storey, unit-correct value.
-- **DELETED: the storey-reveal dependency entirely** — `A.storeyRevealList`, `winSec`/`slotSec`, the
-  `INCONCLUSIVE 'no storey-reveal window on this plan'` guard, and with them **§59.8's whole NOFIT
-  branch and §RULE_FILM_LINGER_FIT**. Those solved a problem that stops existing here. Hospital's
-  `§RULE_FILM INCONCLUSIVE` from the missing `--storey-reveal` flag also stops being possible.
-- **KEPT UNCHANGED:** the closing summary cards (§59.4c) and their §68 colours; `ruleFindingsFilm.stats()`;
-  §67's two-table geometry; §69's hide counting.
-
-**70.4 HONEST COSTS, stated before the code.**
-- Findings no longer coincide with their storey being lit. That was §59.3's original justification and
-  it is being given up deliberately — §60.5 shows it was already broken in practice (the caption
-  outlived its tint by 1.19s once §59.8 admitted short slots).
-- Clutter rises. The user has already accepted exactly this tradeoff for clash in §P2.1
-  ("Labels up to 8 pairs nearest... clutter acceptable"); the same TOP_N and the same overlap walk
-  apply here, so the behaviour is the one already reviewed and approved on the other feature.
-- `--storey-reveal` stops being required for Sanity, so §59.8b's flag exception disappears.
-
-**70.5 TESTS — extend `witness_rule_findings_film.js`, and keep it honest about what is gone.**
-- **K1 ALL-FINDINGS-MARKED** — `showRuleModeTint` is called with EVERY finding's guid, not 2.
-- **K2 NO-STOREY-DEPENDENCY** — a plan with NO `storeyReveal` still reaches state BEAT and marks
-  everything. Directly contradicts the old scenario-3 INCONCLUSIVE, which is retired with its cause.
-- **K3 TOP-N-NEAREST-WINS** — with a camera placed nearer one finding than another, ranking admits the
-  nearer first; at most TOP_N carry labels in a frame.
-- **K4 FRUSTUM-SKIP** — a finding behind the camera carries no label and is counted as skipped.
-- **K5 OVERLAP-SKIP** — two findings projecting to the same screen point yield one label, one
-  `skippedOverlap` — the count clash already reports.
-- **K6 NOFIT-IS-GONE** — the NOFIT branch no longer exists; a short/absent window is not a failure
-  state any more. Proves §59.8 was retired deliberately rather than left dead.
-
-**70.6 ⛔ REGRESSION FOUND ON THE FIRST REAL BAKE — §RULE_TINT_SHOW_ONLY.** §70 shipped, baked
-(`out/HHS_clashmodel_854x480.mp4`, 1957 frames, 924s, `unconverged=0`, `fileOk=true`) and the log was
-everything §70 promised: `§RULE_FILM marked=215`, `§RULE_TINT_ENTER elements=214 colors=2
-guidsAsked=215 meshesHidden=0 shineThrough=true renderOrder=900 depthTest=false`,
-`§RULE_FILM_LABELS marks=215 eligible=8 labelled=2 skippedOverlap=6`. **The frames are unusable.**
-At t=48s and t=92s the view is a web of wireframe boxes edge to edge.
-
-**The difference from clash that §70.2 missed:** a clash marker is a small CONTACT box; a Sanity
-marker is a whole-element or whole-ROOM bbox — 71 of HHS's 215 are rooms (`§RULE_TINT_ROOM_GEOM n=71`),
-each metres across. 215 of those with `depthTest:false` is a full-screen mesh. "Mark everything, all
-film" is correct for clash's geometry and wrong for this one. Copying the model was right; copying it
-without checking that the marker SHAPE transfers was not.
-
-**THE FIX — markers follow the same ranking the labels already use.** `A.ruleTintShowOnly(guidSet)`
-(`rule_checklist.js`) scales non-ranked instances to zero; the composite hands it the eligible set each
-frame. Nothing is rebuilt — same mesh, same material, same instance count, ~215 matrix writes a frame.
-`§RULE_FILM_LABELS` now also reports `markersShown=N/total`. The 2-finding cap stays dead: over a film
-every finding can take its turn, but only the nearest few are drawn at once.
-
-**70.7 TESTS.** **K7** (20 findings against `TOP_N = 8`) asserts markers narrow to at most 8, and
-**K7c** that the NEAREST are the ones kept. **K7's first draft used the 5-finding fixture and passed
-without narrowing anything** — 5 is under the cap, so it proved nothing. Same vacuous-pass trap §66's
-C3 fell into; a check must reach the behaviour it names. **19/19** after the fix.
-
-### 71. SPEC (2026-09-11) — §RULE_FILM_VISIBLE_FIRST + §RULE_TINT_ROOM_ANCHOR: two faults §70.6 left
-§70.6 fixed the marker flood in aggregate (8-12 shown of 215, confirmed in
-`out/HHS_final_854x480.log`). Two faults it did NOT fix, both measured on that same bake:
-
-**71.1 THE FILM IS SILENT FOR 57% OF ITS LENGTH.** `§RULE_FILM_LABELS` across the film:
-`labelled=0` on **75 of 131** film seconds, with `skippedFrustum=8..12` on those seconds. The eight
-slots were being spent on the nearest findings whether or not any of them was on screen — indoors they
-routinely all sit behind the camera, so 215 marked findings produced nothing at all for over half the
-film. **Cause: ranking order.** Clash ranks by distance and frustum-tests afterwards, which is right
-for clash because a clash contact is a POINT, so "nearest" is a good proxy for "visible". These markers
-are elements and rooms and that proxy does not hold.
-**Fix: frustum-test BEFORE the cap** — project everything, keep what is on screen, then take the
-nearest TOP_N of those. TOP_N, `RANK_MARGIN_M` hysteresis, `FADE_S` and the overlap walk are all
-unchanged; only the order changes. The projection is now done once per marker per frame and reused by
-the draw loop instead of being repeated there.
-
-**71.2 A ROOM'S MARKER WRAPS THE CAMERA.** At `t=48s` the camera is inside a room and that room's own
-bounding-box wireframe fills the frame. 71 of HHS's 215 findings are rooms (`§RULE_TINT_ROOM_GEOM
-n=71`, §67) and a room bbox is a REGION metres across, not a thing — at close range its outline is the
-whole view, and "nearest 8" indoors means standing inside several of them at once.
-**Fix: a room is marked by a POINT, not by its extent** — a fixed `ROOM_ANCHOR_M = 1.2` m anchor cube
-at the room centre. Real ELEMENTS keep their true bbox, because for those the outline is the useful
-information. The room/element distinction is already known at resolve time (§67 reads rooms from
-`spatial_structure`), so it is tagged there rather than guessed from size.
-
-**71.3 TESTS.**
-- **V1** — 3 findings very near but BEHIND the camera, 3 far but in front: the behind ones never take
-  a slot. Fails pre-fix, where all 6 were admitted.
-- **V2** — the far-but-visible findings get the slots and are labelled.
-- `tests/test_rule_mode_tint.js` continues to cover the two-table resolution the room tag rides on.
-**21/21. Falsified against the pre-fix file: V1 admits all 6, V2 shows 6 of 3 visible.**
-
-### 72. ⛔ REGRESSION (2026-09-11) — §RULE_FILM_MEASURE_ECHO: §70 silently dropped the Measure box
-**User: "the Measure box will append the message of the appearing Sanity item also right?"** It did
-not. `grep filmBoxesMeasurePost viewer/rule_findings_film.js` → nothing.
-
-**What happened.** §70 replaced `ruleFindingsFilmCompositeOntoCanvas` wholesale: the old body posted
-the storey-slot picks into the Measure box, the new body draws floating labels. The posting call went
-with the old body and nothing replaced it, so after §70 the Measure box received no Sanity entry at
-all. **This contradicted a standing instruction** the user had given hours earlier — "Sanity messages
-are to append to that [the Measure box]" (§61-era discussion) — and no test covered it, because the
-witness checks written for §70 all describe the new label pass.
-
-**Fix.** The NEAREST labelled finding each frame is echoed to `A.filmBoxesMeasurePost(title, rows, ink)`.
-Only the first: the box shows one entry at a time (§14 slot collision), and `elig` is distance-sorted,
-so the echo is the nearest visible finding rather than an arbitrary one. `§RULE_FILM_LABELS` now also
-reports `measureEcho=yes|no`, so a bake log says whether the box was fed.
-
-**72.1 LESSON — a wholesale rewrite drops requirements that no test names.** §70 was specified,
-witnessed 16/16, falsified, and still lost a feature the user had explicitly asked for, because every
-check written for it described the NEW behaviour and none asserted the OLD contract still held. When
-replacing a function body rather than editing it, enumerate what the old body did and assert each item
-still happens. M1-M3 now do that for this one.
-
-**72.2 TESTS.** **M1** the Measure box receives a Sanity entry when one is on screen (fails against
-§70/§71 — no post at all). **M2** exactly one per frame, and it is the nearest. **M3** the echoed
-entry carries its category ink so §68's colours still apply. **24/24.**
+### 72. ⛔ RETIRED by §77 — §RULE_FILM_MEASURE_ECHO. Its LESSON survives, restated in §81.5: a
+### wholesale rewrite drops requirements that no test names. See §76.5 RECAP.
 
 ### 73. SPEC (2026-09-12) — §HUD_MEDIA_SCHEMA: translucency back, a palette that separates at a glance,
 ### smaller Sanity labels with a 3s TTL
@@ -4633,6 +4364,39 @@ spawn all over the screen" is a throughput problem, not a count problem.
 - **S5 ROTATION** — after retirement a different finding takes the slot, and the set resets only once
   every candidate has had a turn.
 - **S6 SMALLER** — the label font is strictly smaller than before at the same frame height.
+
+### 76.5 RECAP — §61-§76 in one page (consolidated 2026-09-12). Seven sections were RETIRED to stubs
+### above because their blow-by-blow obscured the live design. This is everything that still matters.
+**Read this instead of §61-§76. The live sections in that range are §62, §63, §66, §67, §69, §73, §76.**
+
+**WHAT THE HUD LOOKS LIKE NOW (the settled answers).**
+| | |
+|---|---|
+| Plate | `cpe_path_overview.js:208`'s own — 9px blurred backdrop, `rgba(0,0,0,0.28)`, 1px white hairline. 72% see-through. Shared via `A.cpePanelPlate`, never copied. |
+| Text | carries its own dark shadow (§76), so legibility does not depend on the plate. Measured against the shadow: 8-11:1. Against the plate alone it is 1.0-1.3:1, and that is FINE and deliberate. |
+| Structural ink | amber `#ffb300` |
+| Safety ink | violet `#ea80fc` — chosen by CIE-Lab distance from everything already on screen. `#e57373` scored dE 8.1 from clash A: the same colour. |
+| Clash | red / blue, untouched — not this feature's to move |
+| Category cue | the ink PLUS a 3px edge bar down the box's left |
+
+**FIVE STANDING RULES, each bought with a mistake.**
+1. **Never touch scene lighting** (§61.0). §60.3's `emissiveIntensity` remedy is withdrawn under it.
+2. **The HUD is an isolated colour schema** (§61.0) — not coupled to the 3D palette; they may differ on purpose.
+3. **A colour is an IDENTITY, not a contrast value** (§73.1). Safety was picked on contrast maths alone and landed on clash's exact salmon. Check any new ink against what is already on screen, in Lab, not RGB — RGB reported 35 and hid it.
+4. **Share the implementation, never copy the values** (§65) — `A.cpePanelPlate`, `ruleTintMaterialOpts`. Two copies drift the moment either is retuned.
+5. **Film-only behaviour is an OPT-IN, never an edit to a shared constant** (§62.2, §78.4). `RULE_TINT_MATERIAL_OPTS` is T5's contract that interactive Rule Mode equals Clash MODE; `shineThrough` and `filled` are opt-ins precisely so that holds. Two separate attempts edited it directly and broke `tests/test_rule_mode_tint.js`.
+
+**THE ARC, and why it went the way it did.** §61 read "the yellow HUD is not helping optics" as a HUE
+problem and changed a fallback almost nothing reaches. §64 found the actual defect — the plate was
+filled with the title's own ink, so every entry was hue-on-hue. §65 then matched the plate to the main
+HUD, §68 made it opaque to clear WCAG 4.5, and §73.0 reversed that on the user's call (a film is not a
+web page; the viewer can pause and the scene is moving), with §76 moving legibility onto the glyph
+where it belongs. **Three sections in a row each fixed something real and still left the HUD
+unreadable, because the question being answered was never the one asked.**
+
+§70-§72 are the same shape one level up: §70 correctly cut the storey tie but labelled per ELEMENT,
+§71 fixed its ranking, §72 restored what §70 had silently dropped — and §77 then removed the entire
+layer, because 509 findings are six rules and were never 509 stories.
 
 ### 77. NEW SPEC (2026-09-12) — §RULE_FILM_SET_PULSE: one box per RULE, a depth wave per set
 **The user's own design, arrived at by watching the Hospital 1080p bake.** Their words, in order:
@@ -4792,6 +4556,11 @@ move with it. 19/19.
 **Branch:** bim-ootb `feat/rule-findings-film` @ `2aa71262`, 42 commits this session. `feat/measure-boxes`,
 `fix/storey-reveal-list` and `fix/batch-bucket-class-paint` are all merged into it. **`feat/structural-
 sanity` is still NOT an ancestor** — check before assuming the tree is whole.
+
+**81.0 START HERE, in order.** (1) **§82** — the only open item with a finished spec: 7-8 set boxes
+crowd the frame on Terminal; queue and stagger them. (2) **§60.3/§60.4/§60.6/§60.7** — storey-reveal,
+already measured, four defects still open. (3) **§81.3** — bake memory at model load. **§76.5 RECAP**
+replaces §61-§76: read it rather than those sections, seven of which are now stubs.
 
 **81.1 WHAT LANDED, in order.** §59.7 room-injection path gap (two silent defects: a factory-time
 `RoomGraph` bind, and `storey_footprint.js` never added to the browser load list — `exits=0
