@@ -4814,6 +4814,9 @@ is still not in the tree is the same fact; this spec is the second thing now wai
 
 ### 87. SPEC (2026-09-12) — §RULE_REPORT: the findings WITHOUT the film, and a Report button on the
 ### Sanity panels. One builder, three surfaces.
+**⚠ OWNED BY ANOTHER SESSION (user, 2026-09-12): the compliance-integrity session is implementing this.
+Do not start it from this lane.** The spec below is the handover; §87.3's "must not ride
+`ruleFindingsFilmBuild`" and §87.5's "a zero IS a result here" are the two things easiest to get wrong.
 **Origin: the user.** *"What is next to disrupt the BIM playing field of fast hassle free usage?"* —
 then, on the answer: *"spec the findings-only run, and where can we pin it? In the Sanity panels as a
 'Report' export?"* Yes, and in the GENERIC chassis so both panels get it from one edit.
