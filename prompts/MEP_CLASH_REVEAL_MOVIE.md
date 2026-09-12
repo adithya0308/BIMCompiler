@@ -5261,3 +5261,74 @@ code — the same lesson `witness_batch_bucket_class_paint.js` states in its own
    hole — it is what kept a real, 13.5-hour schedule inversion off the screen for however long it
    has been in the data. A gate that only applies when the batch happens to be touched is not a gate.
    Note the direction this cuts: fixing the skip WITHOUT fixing (1) also makes the floor disappear.
+
+**88.9 THE ACTUAL CAUSE — 28 foundation walls are filed under the wrong TASK, and only those 28.**
+*(User: "I prefer you identify the actual cause and grasp why it happened." §88.8 said "the schedule
+is inverted", which is a restatement, not a cause. This is the cause.)*
+
+The model is RIGHT. `tasks` carries the correct order and `task_elements` carries the correct link:
+
+```
+TASK_Substructure_Level_1     2026-01-01 .. 2026-01-12   ← the foundation walls belong here
+TASK_Superstructure_Level_1   2026-01-12 .. 2026-01-25   ← the 8,899 m² ground slab
+task_elements(3iM76qwej9Tf9ttHcbQrdG) = TASK_Substructure_Level_1     ✓ correct
+```
+
+The persisted `kernel_ops` row for that same wall says otherwise:
+
+```
+_task:    "TASK_Architecture_Envelope_Level_1"     ✗  — a task that runs AFTER Superstructure
+taskName: "Architecture Envelope — Level 1"
+phase:    "Substructure"        ← the name-override DID land here
+_cell:    "L0·T1·L0"            ← …and here: T1 = sequence 1, substructure trade
+```
+
+**One element, two different phase answers.** `rates.js`'s `foundation_wall_substructure` override
+("a wall NAMED Foundation is substructure", `sequence: 1`) reached the op's `phase`/`seq`/`_cell`
+fields but NOT its task bucket, which was taken from the plain class table
+(`IfcWallStandardCase → 'Architecture Envelope'`). The support predicate reads the seq-1 answer, so
+the wall counts as a structural carrier; the timing reads the Architecture-Envelope answer, so it is
+poured after the slab it carries. Same family as §GANTT_PHASE_CLOBBER — two fields that must agree,
+and one lane not being told.
+
+**How wrong, exactly — audited across all 63,415 ops against `task_elements`:**
+
+| `_task` vs `task_elements` | count | share |
+|---|---|---|
+| agrees | 49,841 | 78.6 % |
+| **phase shift only** | **28** | 0.04 % |
+| storey shift only | 13,546 | 21.4 % |
+
+**Every one of the 28 phase shifts is the same shift** — `Substructure → Architecture_Envelope` —
+and every one is a Level 1 `Basic Wall:Foundation - 375mm Concrete w_step`. That is the entire
+population of this bug, and 20 of the 28 sit in-extent under the ground slab.
+
+**The timing follows the wrong task, not the right one.** All 28 walls' op starts fall inside
+Architecture-Envelope-L1's element envelope (`09-19 00:00 .. 10-06 23:18`), none inside
+Substructure-L1's (`09-10 22:59 .. 09-13 06:27`). Filed correctly they would finish **5.4 days
+before** the slab (`09-13 06:27` vs slab end `09-18 16:42`) and `_buildXraySupportCache` would have
+had nothing to stage. Filed as they are, `maxCarrierEnd` lands 13.47 h past the slab and the gate
+hides an 8,899 m² floor.
+
+**And the bake cannot correct it.** `§CPE_BUILDUP_SOURCE … capActive=false` — the captured
+re-injection does not re-run; `injectGantt`'s `_cap.guidTask` join (which reads `task_elements`
+directly and would have produced the right bucket) is bypassed, and the film replays the persisted
+`kernel_ops` timestamps verbatim. The misassignment was baked into the DB at `_genVersion: 39` and
+every bake since has replayed it.
+
+**88.9a THE FIX IS ONE LANE, NOT THE GATE.** Task-bucket assignment must use the SAME classifier
+result the `phase`/`seq`/`_cell` fields already use — i.e. `matchRule(cls, name)` including
+`SEQUENCE_NAME_OVERRIDES`, or better, `task_elements` itself, which is already correct here and
+which `_cap.guidTask` already reads. Witness: for every op, `params._task` must equal a
+`task_elements` row for that guid; Hospital's current failure count is **13,574** (28 phase, 13,546
+storey). Nothing in §88 needs the staging gate, the ghost plane, the bucket key or the Time Machine
+to change.
+
+**88.9b SEPARATE, LARGER, NOT THE §88 CAUSE — the 13,546 storey shifts.** They are near-uniformly
+**one storey upward** (`Architecture_Envelope_Level_4` where `task_elements` says `Level_3`,
+`MEP_Rough_in_Level_5` → `Level_4`, `Superstructure_Level_2` → `Level_1`). That is an off-by-one in
+the storey ladder used at op-generation time, and §STOREY_DATUM_FRAME (`f289da6b`, #1641) plus the
+v86 log's own `§FLYTHRU_DATUM_ZDATUM levels=0.00..34.00 elements=156.61..203.62 offset=165.81m
+(levels were in a LOCAL datum)` are where to start. It does not cause the missing floor — the
+foundation walls are in the 28, not the 13,546 — but it means a fifth of this film's elements are
+playing in the wrong storey's bar.
