@@ -5211,3 +5211,53 @@ through the slab centre at clip frame 6 returns `y=-15.427` (the slab top) BEFOR
 Census: Hospital has **0** single meshes carrying a guid — 38,169 BatchedMesh slots and 25,013
 InstancedMesh slots — so any §88-class question must be asked of the batched branches, never the
 single-mesh one.
+
+**88.8 THE UPSTREAM CAUSE — the ground slab is built BEFORE its own foundation walls.**
+*(User: "What was the cause of it before this?" §88.7 named the mechanism that put the mis-stage on
+screen; this is what creates the mis-stage in the first place. Corrects §88.7c(1)'s guess that
+`_buildXraySupportCache` was inventing a carrier — it is not. The carrier is real.)*
+
+Exactly ONE op in all 63,415 ends at the slab's solidify time `1789798254510`:
+
+```
+3iM76qwej9Tf9ttHcbQrdG  IfcWallStandardCase  "Basic Wall:Foundation - 375mm Concrete w_ste…"
+  storey=Level 1  phase=Substructure  base_z=164.644  top_z=166.144
+  rank 864/63415   start 2026-09-19 05:57   end 2026-09-19 06:10
+0e8pm26Tv5vPrj6zU55MOH  IfcSlab  the 8,899 m² ground slab
+  storey=Level 1  phase=Superstructure  base_z=165.361  top_z=165.811
+  rank 805/63415   start 2026-09-18 16:37   end 2026-09-18 16:42
+                                            → gap = 13.47 hours
+```
+
+It qualifies as a carrier on every clause and needs no roof-load-path promotion: `rates.js`'s
+`foundation_wall_substructure` override ("a wall NAMED Foundation is substructure") gives it
+**sequence 1**, so it lands in `structGrid`, not `wallGrid`. `base_z 164.644 < 165.361−EPS` and
+`top_z 166.144 ≥ 165.361−GAP` put it under the slab; `166.144 ≤ topBound 166.311` make it
+IN-EXTENT, so it sets `maxCarrierEnd`. And it is not alone: **20 of 20** in-extent wall carriers
+beneath that slab finish AFTER it.
+
+**So §XRAY_STAGING_REMOVED is not misfiring. It is correctly reporting that the captured schedule
+pours an 8,899 m² ground-floor slab 13.5 hours before the foundation walls it bears on.**
+`Superstructure — Level 1` finishing ahead of `Substructure — Level 1` for the same storey is the
+defect; the invisible floor is the gate honestly refusing to draw an unsupported element.
+
+⚠ **Why §88.6c's offline check said "not staged" and was wrong.** That re-implementation mapped
+`IfcWallStandardCase` to the class-table default (seq 6) and so routed these walls to `wallGrid`,
+which is only consulted for promoted slabs — excluding the very carriers that matter. It missed
+`SEQUENCE_NAME_OVERRIDES` entirely. A re-typed copy of a shipped predicate tests itself, not the
+code — the same lesson `witness_batch_bucket_class_paint.js` states in its own header (W-BBCP-5,
+"⚠ THE KEY IS SLICED OUT OF viewer/streaming.js AND EVALUATED, NEVER RE-TYPED HERE"). The runtime
+`__tmXrayProbe('map')` number is the one to trust.
+
+**88.8a REVISED FIX ORDER, replacing §88.7d.**
+1. **Fix the schedule, not the gate.** `Substructure — Level 1`'s foundation walls must finish
+   before `Superstructure — Level 1`'s ground slab. Witness: for every IfcSlab, no in-extent
+   structGrid carrier may have `end_ts` greater than the slab's — asserted per building, with the
+   count of violations reported, not averaged away. Hospital's current count for this one slab is
+   20/20.
+2. **Only then** merge §BATCH_BUCKET_CLASS_PAINT. Merging it first ships the missing floor, because
+   it removes the accident (§88.7c(2)) that is currently drawing the slab anyway.
+3. **Independently**, the `_incrOK` skip leaving a stale `setVisibleAt(true)` is its own correctness
+   hole — it is what kept a real, 13.5-hour schedule inversion off the screen for however long it
+   has been in the data. A gate that only applies when the batch happens to be touched is not a gate.
+   Note the direction this cuts: fixing the skip WITHOUT fixing (1) also makes the floor disappear.
