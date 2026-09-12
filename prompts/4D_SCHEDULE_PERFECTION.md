@@ -5519,3 +5519,41 @@ existed, this DB would have re-derived on the next open and §88 would never hav
 it gives a cheap standing check, independent of everything else: **`display_authored=1` must imply the
 task window equals the op window.** Here it does not, and that single inequality is detectable in one
 SELECT.
+
+**§SCHED_TASK_BUCKET_SPLIT_BRAIN — TRACED: `kernel_ops` HAS TWO HOMES AND NO ARBITRATION.**
+*(User: "The source of truth is the same, DB and IndexDB which takes from OCI. Trace it if you
+agree." Agreed, and the trace lands on the join between them.)*
+
+```
+OCI  https://objectstorage.ap-kulai-2.oraclecloud.com/.../b/bim-ootb/o/   (config.js A.PROD_BASE)
+  └─ Hospital_silent.db  ── fetched bytes, cached verbatim in IDB CACHE_STORE by URL
+        └─ table kernel_ops        ← the 63,415 frozen ELEMENT_PLACE rows (§88's 28 walls live here)
+
+IndexedDB  same CACHE_STORE, different key: _cacheKey('gantt')
+  └─ cachePut('gantt', _ops)   written by the cold path after injectGantt      (time_machine.js :8921)
+     cacheGet('gantt')         read FIRST on every activate                    (time_machine.js :8802)
+        └─ §GANTT_CACHE_HIT →  DELETE FROM kernel_ops WHERE op_type='ELEMENT_PLACE'
+                               then re-INSERT every row from the cached JSON   (:8830-8847)
+```
+
+**The IDB copy does not cache the DB's ops — it REPLACES them, by DELETE + INSERT, on every warm
+open.** So a host that has ever opened the Time Machine plays the IDB schedule; a host with no IDB
+entry (a bake with a fresh `--profile`, a new browser profile, cleared site data) plays the `.db`'s
+frozen rows. Same OCI artefact, two different timelines, and **neither copy carries a signature of
+the inputs it was derived from** — not the `tasks` rows, not `task_elements`, not the rates/override
+version. `cacheDel('gantt')` exists for an explicit refold and `§GANTT_STALE_CACHE` drops the entry
+when the DB has no schedule at all, but nothing ever asks "is this cache still true of this DB?".
+
+**This is the whole defect, stated once.** The floor slab is not a bake variable and not a renderer
+bug: `kernel_ops` is a DERIVED artefact stored in two places that can disagree, with the host deciding
+which one is authoritative. Everything else in this section is a consequence — the 28 mis-bucketed
+walls (what the frozen copy happens to contain), the 329-day/310-day calendar divergence (the frozen
+copy predates a `tasks` re-authoring), and "it is ok in the browser" (the IDB copy is the fresher of
+the two, for that host only).
+
+**The fix does not change: §SCHED_TASK_BUCKET_SPLIT_BRAIN's step 1.** Stamp both copies with an input
+signature over `tasks` + `task_elements` + element classification inputs + rates version; re-derive
+when it differs; then the two homes cannot disagree, because both are the same pure function of the
+same OCI bytes. Step 2 (one classifier, one phase answer) is what makes that derivation correct once
+it runs. Step 4's JKR finding (70 slabs, 226 late carriers, 0 self-contradictory ops) is untouched by
+either and remains the open one.
