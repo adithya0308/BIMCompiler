@@ -5168,6 +5168,30 @@ consolidate key ~L2849, nothing else) and re-baking the same clip:
 ```
 Unreverted: `visible=false` for the whole window. That is the A/B.
 
+**88.7b-bis PROVEN BY ADJACENT COMMITS (2026-09-12).** §88.7b's hand-revert established the line;
+this pins the date with no other variable. Two bakes, `7af3fd64` against its own parent `42340b46`,
+same DB, same `--clip 0:0.02`, same 1920x1080 frame 38 (Day 13):
+
+```
+42340b46 (parent)         frame=23 placedOps=1008 visible=TRUE   frame=24 placedOps=1042 visible=TRUE
+7af3fd64 (+1 line)        frame=23 placedOps=1008 visible=FALSE  frame=24 placedOps=1042 visible=FALSE
+```
+Identical guid, `placedOps`, `groundY`, `host=BM`. **Only `visible` flips**, and the rendered frames
+agree: concrete deck in the parent, bare earth in the child.
+
+**`7af3fd64` — 2026-09-11 15:29:10 +0800**, `fix(viewer): §BATCH_BUCKET_CLASS_PAINT — put ifc_class in
+the batch bucket key that decides the material`, `viewer/streaming.js`, +17/-2. It IS an ancestor of
+`8e53455b`, the commit the v86 film was baked from, so it was in the film that showed the symptom.
+
+**Read this together with §88.9-§88.11 and do not conflate them.** The SCHEDULE condition (28
+mis-bucketed foundation walls → the slab staged 13.47 h) is OLD: every one of the 18 Hospital bakes on
+record adopted the same frozen ops and staged the same slab, and `§GANTT_SOURCE` appears in NONE of
+them. What changed yesterday is only whether that standing verdict reaches a pixel. So there are two
+independent items, and only the first is a regression:
+1. **`7af3fd64`, yesterday, on `feat/rule-findings-film`** — makes the floor disappear. Not on main.
+2. **The frozen-ops schedule defect** — pre-existing, fleet-wide-latent, and the subject of the 4D
+   lane's fix. It was never a regression and never had a symptom until (1).
+
 **88.7c THE MECHANISM — two defects, and only the second one is the branch's.**
 Probed at clip frame 40, same cursor (`placedOps=1653`), `dlodEngaged=false` in both:
 
