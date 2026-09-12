@@ -4964,16 +4964,35 @@ targeted "when did guid X appear" probe. This is the same lesson §RULE_FILM alr
 bim-ootb T8.12 already applied: a count is not evidence, and a rule or a beat that cannot show its
 own working cannot be debugged from its log.
 
-**88.4 THE THREE CANDIDATES, in the order the evidence favours them.** Stated so the next session
-can falsify rather than browse:
-1. **Placed but not drawn.** The op fires, the mesh does not appear — a geometry, material or
-   visibility path specific to a single 8,899 m² element. Test: force the slab visible at t=0 and
-   see whether it renders at all.
-2. **Ordering within the task.** The task is right but the slab is late in its own op sequence, so
-   it lands well after the 2.1% mark. Test: dump the op order inside `Superstructure — Level 1`.
-3. **A real interrupt on an earlier run.** The user's own hypothesis. Test: re-bake a short clip
-   (`--seconds 10`) and eyeball the same window; if it is correct there, the fault was
-   run-specific, not code.
+**88.4 ⚠ PRIME SUSPECT — `§GHOST_GROUND`'s plane is COPLANAR with the ground-floor slab.**
+*(The user, on the same film: "even in the return trip for reveal it is when i first noticed it was
+all ground!" The reveal runs AFTER top-out, when construction is complete — so this is not a
+buildup-ordering fault at all. That observation eliminated two of the three original candidates and
+pointed at the one below.)*
+
+```
+§GHOST_GROUND_SCHEDULE groundZ=165.36  aboveOps=62682 belowOps=733
+Level 1 slab        base z = 165.36    top z = 165.81   (0.45 m thick, 8,899 m²)
+§CPE_BUILDUP frame=0   groundOpacity=0.220
+§CPE_BUILDUP frame=60  groundOpacity=1.000      <- and 1.000 on all 79 later samples
+```
+
+**`groundZ` equals the slab's underside exactly.** The ground plane is derived as the first
+above-ground element's base elevation, and on Hospital that element IS the ground-floor slab — so
+the plane lands flush with it. From 2.5 s onward the plane is fully opaque and stays that way for
+the rest of the film, including the closing reveal. A viewer looking at where the ground floor
+should be sees the ground plane: exactly the reported symptom, and it explains why it persists to
+the reveal rather than clearing once construction completes.
+
+**The decisive test, cheap:** render one frame with the ground plane suppressed (or `groundZ`
+dropped below 165.36) and see whether the 8,899 m² floor appears. If it does, the fix is in how
+`groundZ` is derived — a plane placed AT the first above-ground element will always be coplanar
+with it — not in the buildup or the data.
+
+**RULED OUT by 88.1-88.3 and the reveal observation, do not re-test:** ordering within the task
+(the reveal is post-top-out and still shows ground); missing or empty geometry (all 35 slabs carry
+an `element_instances` row, the big slab's mesh is 11,304 vertex bytes / 3,768 face bytes, and
+there are **0 dangling geometry hashes** in the DB); and the data or the bake (88.1).
 
 **88.5 WHAT "DONE" LOOKS LIKE.** A `§CPE_BUILDUP_PLACED`-style line naming the Level 1 slab guid
 with the frame it appeared on, from a real bake — and the opening seconds showing a floor. Per
