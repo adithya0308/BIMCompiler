@@ -5138,3 +5138,76 @@ logged as `§CLI_BAKE_TAP` and written to `<out>_tap.json`). A tap that, once th
 sets the cursor to the slab's `end_ts` and reports which of §88.6d's three states holds answers this
 in one short run — the 71.3 s load dominates, not the film. Run it BEFORE changing any render code;
 per §80.1, grep the log and quote the number that moved.
+
+**88.7 ROOT CAUSE, A/B-PROVEN (2026-09-12). It is NOT on main, and it is NOT a Time Machine fix.**
+*(User, mid-trace: "it must been broken as a time machine fix recently?" — measured answer: no. The
+Time Machine schedules and reveals this slab correctly in every tree tested. What differs is which
+BatchedMesh bucket it lands in.)*
+
+**88.7a THE REPRODUCTION.** `cli_silent_bake.js --clip 0:0.02` bakes the first 2 % of the SAME film
+(59 frames, real pacing, real camera path) in ~2 min instead of 98. Baked at 1920×1080 from two
+trees, same DB, same `--clip`, frame 38 of each (Day 13, identical pose):
+
+| tree | commit | frame 38 | `§CPE_BUILDUP placed=` @58 |
+|---|---|---|---|
+| `main` | 5c0c8669 | **concrete Level 1 deck under the walls** | 2507/63415 |
+| `feat/rule-findings-film` | 8e53455b (the v86 tree) | **bare earth — the §88 symptom, exactly** | 2507/63415 |
+
+Identical schedule, identical `§XRAY_EDGES staged=544/63415`, identical `§GHOST_GROUND_SCHEDULE
+groundZ=165.36`. So §88 was never a main defect — the v86 film was baked from a branch.
+
+**88.7b THE ONE LINE.** `viewer/streaming.js` on that branch carries **§BATCH_BUCKET_CLASS_PAINT**
+(unmerged, not spec'd anywhere in bim-compiler), appending `+ '|' + (el.ifcClass || '')` to the
+BatchedMesh/merge bucket key. Reverting **only that term** (both the batch key ~L2210 and the
+consolidate key ~L2849, nothing else) and re-baking the same clip:
+
+```
+§BUILDUP_DRAWN frame=19 … visible=false
+§BUILDUP_DRAWN frame=20 … visible=true          <- the floor comes back
+§BUILDUP_DRAWN_SUMMARY … frames=59 framesDrawn=40
+```
+Unreverted: `visible=false` for the whole window. That is the A/B.
+
+**88.7c THE MECHANISM — two defects, and only the second one is the branch's.**
+Probed at clip frame 40, same cursor (`placedOps=1653`), `dlodEngaged=false` in both:
+
+```
+main      §WHY_HIDDEN claims=[{kind:BM, id:2990, slot:3, n:13, vis:true,  host:true }]
+branch    §WHY_HIDDEN claims=[{kind:BM, id:3304, slot:0, n:1,  vis:false, host:false}]
+both      §WHY_HIDDEN xray staged=544 n=544 solidifyTsForGuid=1789798254510
+```
+
+1. **THE LATENT DEFECT, PRESENT ON MAIN TOO.** `§XRAY_STAGING_REMOVED`'s gate
+   (`bStaged = !frontier && _tmXraySolidifyTs[g] !== undefined && cursorMs < _tmXraySolidifyTs[g]`)
+   holds the **ground-floor slab** until `1789798254510` — **13.5 hours after its own op ends**
+   (`end_ts=1789749776520`). A slab whose underside IS the ground datum has no carrier that can
+   legitimately finish after it; `_buildXraySupportCache` is finding one anyway. This is a real bug
+   in the support-carrier predicate and it is on main, unfixed.
+2. **WHY MAIN GETS AWAY WITH IT.** On main the slab shares a 13-slot BatchedMesh, and its slot still
+   reads `true` at a cursor where the gate says it should be false — the traverse's incremental
+   (`_incrOK`) path skips whole batched objects on ticks where nothing in them changed, so the
+   slot keeps a stale `true`. The floor is drawn by accident, not by decision.
+3. **WHAT THE BRANCH CHANGES.** With `ifcClass` in the key the slab becomes the ONLY member of its
+   own BatchedMesh (`n=1`). Every tick now touches that object, the gate applies in full,
+   `anyVis=false` sets `host.visible=false` — and the 8,899 m² floor is never drawn, in the opening
+   AND at Day 310. §BATCH_BUCKET_CLASS_PAINT did not create the bug; it removed the accident that
+   was hiding it. **It is a correct change sitting on top of an incorrect one.**
+
+**88.7d WHAT TO FIX, IN THIS ORDER.**
+1. **`_buildXraySupportCache` must not stage a ground-bearing slab.** `§GROUND_CONNECTED`/
+   `§PROMOTED_CARRIER_POOL` already treat seq-1 ground-bearing elements as exempt; the same exemption
+   belongs here — an element whose `base_z` is at the `§GROUND_Y` datum (±EPS) bears on ground, not on
+   a carrier. Witness it by asserting `_tmXraySolidifyTs[<L1 slab guid>] === undefined` on Hospital.
+2. **Only then** is §BATCH_BUCKET_CLASS_PAINT safe to merge. Merging it first ships the missing floor.
+3. **Separately**: the `_incrOK` skip leaving a stale `setVisibleAt` is a correctness hole of its own —
+   it is what made a 13.5-hour mis-stage invisible for however long it has been there. Whatever the
+   ruling on (1), a gate that only applies when the batch happens to be touched is not a gate.
+
+**88.7e ALSO MEASURED, AND CLEARED — do not re-test.** `§BM_BOUNDS_CULL`'s stale sphere is real on
+this slab (stored `r=62.251` vs true `r=66.834`, a **4.583 m** shortfall) but
+`storedSphereInFrustum=true` at every pose sampled, so it never dropped it. A downward raycast
+through the slab centre at clip frame 6 returns `y=-15.427` (the slab top) BEFORE `y=-15.877`
+(`isGround=true`) — the slab is 0.45 m in front of the ghost plane and nothing occludes it.
+Census: Hospital has **0** single meshes carrying a guid — 38,169 BatchedMesh slots and 25,013
+InstancedMesh slots — so any §88-class question must be asked of the batched branches, never the
+single-mesh one.
