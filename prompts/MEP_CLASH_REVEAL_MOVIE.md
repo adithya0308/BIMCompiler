@@ -4811,3 +4811,103 @@ is still not in the tree is the same fact; this spec is the second thing now wai
   closing card and the flashing box cannot disagree about the same building.
 - **E5 STILL-ONE-BOX** — adding the line does not add a box: §82's Q1 concurrency cap still holds with
   the exit line present. The check that stops §84 from quietly undoing §82.
+
+### 87. SPEC (2026-09-12) — §RULE_REPORT: the findings WITHOUT the film, and a Report button on the
+### Sanity panels. One builder, three surfaces.
+**Origin: the user.** *"What is next to disrupt the BIM playing field of fast hassle free usage?"* —
+then, on the answer: *"spec the findings-only run, and where can we pin it? In the Sanity panels as a
+'Report' export?"* Yes, and in the GENERIC chassis so both panels get it from one edit.
+
+**87.1 THE MEASURED CASE. The model already knows everything, then spends an hour and a half drawing
+it.** From the two bakes run this session:
+| building | findings complete | film complete | analysis share |
+|---|---|---|---|
+| Terminal (316MB, 48,428 elems) | **+42s** | +1,194s | 3.5% |
+| Hospital (315MB, 64,150 elems) | **+101s** | ~+6,000s | 1.7% |
+
+Hospital's own milestones, read off `out/Hospital_FULL_1080p_v86.log`:
+```
+ +71.3s  §CLI_BAKE_LOADED building=Hospital meshes=4907      ← model load
+ +73-88s §CINEMA_* path planning, twice                       ← SKIPPABLE
+ +88-100s glow staging, §RENDER_LOOP, §PHOTO_SHADOW_*         ← SKIPPABLE
++100.1s  §ROOM_GRAPH_EXITS exits=8 noRaster=7 of 440 doors
++101.3s  §RULE_FILM sets=6 marked=509 ... maxExitDistM=106.9  ← 509 findings, ~1s of evaluation
+```
+**The rules cost about a second.** ~29s of the 101s is cinema planning and render staging a report does
+not need, and **71.3s of it is model load, which a report cannot go below** (§87.10). `cli_silent_bake.js`
+has `--opening-only` but nothing that stops at the knowing.
+
+**87.2 THE SHAPE — ONE PURE BUILDER, THREE SURFACES.** `viewer/rule_report.js` exports
+`buildRuleReport(rowsS, rowsE, ruleDefs, meta)` → a plain object. No DOM, no THREE, no camera, no
+`plan`. Then:
+| surface | how it gets there |
+|---|---|
+| CLI | `cli_silent_bake.js --findings-only` → writes `<out>.json`, exits before the first frame |
+| Sanity/Egress panels | a **Report** button → the same object → Blob download |
+| the film's closing card | `rule_findings_film.js` `_stats` reads the SAME builder |
+**All three must be unable to disagree about one building.** This is §84.4's lesson applied BEFORE the
+drift rather than after it: `0.75` m/step is currently written twice across two branches precisely
+because two surfaces each grew their own copy. One builder, or this repeats.
+
+**87.3 ⚠ THE REPORT MUST NOT RIDE `A.ruleFindingsFilmBuild`.** That function needs a `plan` (§77.3's
+dwell precompute calls `plan.poseAt`), `A.showRuleModeTint` (to populate `A._ruleTintAt`) and later a
+camera. A findings-only path that calls it inherits every dependency it exists to skip. Call
+`StructuralSanity.evaluate(dbQuery, rules)` and `EgressSanity.evaluate(dbQuery, rules)` DIRECTLY — the
+same evaluators the panels and the film already share, with zero duplicated rule logic (this file's
+own founding constraint). RoomGraph still loads, because egress genuinely needs it.
+
+**87.4 WHAT IS IN IT — only what already exists, nothing composed.**
+- **Provenance header**: db name + bytes, commit, sw version, timestamp, and **`rulesSource` per file:
+  `fetched` or `fallback`.** `§RULE_FILM_RULES_JSON` already draws that distinction and a report that
+  hides it would present this file's hardcoded fallback thresholds as the project's authored ones.
+- **Per-rule set totals** — the §77 unit, the same grouping the film boxes state.
+- **Per-finding rows**: guid, ifc_class, `shortName()`, storey, rule, severity, and the value through
+  §63.1's `valueRow` — never a bare `ratio`, which is metres for `door_clear_width` and a real
+  dimensionless ratio for `span_depth_*`.
+- **Egress stats**: `maxExitDistM/Sec/Steps`, carrying §84.3's `~` and the `est.` disclosure.
+- **Room-graph facts**: `exits`, `noRaster`, `doors` — §ROOM_GRAPH_EXITS's own numbers. §59.7's two
+  silent defects (`exits=0 noRaster=133/133`) are exactly the shape this surfaces without a bake.
+
+**87.5 A ZERO IS A RESULT HERE — a deliberate divergence from the film, stated so nobody "fixes" it.**
+The film DROPS a vacuous card (§59: one per non-empty category, "never a fabricated zero"). A report
+must list a rule with **0 findings explicitly**. "We checked `door_clear_width` and found none" is
+information on a page and noise on a moving card. Same data, different surface, different right answer.
+
+**87.6 DETERMINISM IS THE POINT.** Same DB → byte-identical report but for the timestamp. That is what
+makes it diffable across builds and across rule changes — and **that is the actual disruption**: today
+sharpening any of the eight rules costs a full bake to see on a real model, so nobody sharpens them.
+At ~80s a rule change can be tried against a fleet of buildings in an afternoon.
+
+**87.7 FORMAT — one JSON object.** The CLI writes `<out>.json`; the panel downloads the same bytes
+through the convention already in the tree at `variation_order.js:267` (Blob → `a.download` →
+`URL.revokeObjectURL`, plus a `§`-tagged console line). **NOT xlsx now** — `exceljs` is already here for
+Variation Orders and can be layered on the same builder later; putting a spreadsheet library in a
+headless CLI path buys nothing today.
+
+**87.8 THE PIN — where the button goes.** `viewer/rule_checklist.js` `_buildRuleChecklistHtml(config)`
+is a GENERIC chassis: it already renders a button row ("All" + one per `config.categories`) and a Close
+button, and both `A.showStructuralSanity` and `A.showEgressSanity` call it with their own config.
+**The Report button joins that row, once.** Do not add it per panel. `A._ruleChecklistOpeners` is
+already a registry for the deep-link feature, so a third rule panel added later inherits Report for
+free. The button reports what the panel is currently showing — `config.rows` — so the category filter
+the user has applied is honoured rather than silently ignored.
+
+**87.9 TESTS (R-series).**
+- **R1 PURE** — the builder runs in Node with no DOM, no THREE, no camera, no plan. Fails any version
+  that reaches for film state.
+- **R2 SAME-NUMBERS** — builder totals equal `A.ruleFindingsFilm.stats()` for the same rows. The film's
+  closing card and the report cannot disagree.
+- **R3 ZERO-IS-LISTED** — a rule with 0 findings appears with 0, where the film drops it. Asserts §87.5
+  is deliberate.
+- **R4 PROVENANCE** — with the fetch failing, `rulesSource` says `fallback`. Fails a report that
+  presents fallback thresholds as authored.
+- **R5 UNIT-NOT-BARE** — `door_clear_width` reports `0.80 m` and `span_depth_steel` reports
+  `ratio 27.3`. §63.1's overloaded field never printed bare.
+- **R6 DETERMINISTIC** — the same rows twice give identical JSON but for the timestamp.
+- **R7 NO-FILM-DEPS** — a `--findings-only` run emits no `§MAXQ_*` line and no frames, and exits
+  non-zero only on a real failure. Grep the log, per §80.1.
+
+**87.10 OPEN, AND NOT SOLVED BY THIS — THE LOAD.** 71.3s of Hospital's 101.3s is model load, and the
+report cannot go below it; §81.3's twice-observed load-time kill sits on exactly this path. Findings-only
+makes that cost the WHOLE cost instead of 1.7% of it, which is what makes it worth attacking — but
+§81.3's own advice stands: measure peak RSS across the load phase before changing anything.
