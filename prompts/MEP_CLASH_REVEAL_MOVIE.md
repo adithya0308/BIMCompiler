@@ -5332,3 +5332,74 @@ v86 log's own `§FLYTHRU_DATUM_ZDATUM levels=0.00..34.00 elements=156.61..203.62
 (levels were in a LOCAL datum)` are where to start. It does not cause the missing floor — the
 foundation walls are in the 28, not the 13,546 — but it means a fifth of this film's elements are
 playing in the wrong storey's bar.
+
+**88.10 THE INJECTION NEVER RUNS — and the bake is NOT the one at fault.**
+*(User: "doesn't it get Time Machine 4D timeline one time injection first? … Silent bake must follow
+suit and not invent a different setting. So be sure why it also not hard fail when it has no
+schedule info." Three questions, three measured answers. The second one clears the bake entirely.)*
+
+**88.10a THE BAKE INVENTS NOTHING — it runs the shipped verb.** `cli_silent_bake.js` calls
+`window.tmActivateForBake()`, which calls the same `activate(true)` → `_activateAsync` a real Time
+Machine open calls; the only difference is `silent` (no panel). Proof that both land on the same
+branch — the identical line, same numbers, in the v86 branch bake and in a `main` clip bake:
+```
+§TM_OPS_CHECK total=63415 place=63415
+```
+There is no separate bake schedule path to blame. Whatever the browser would do here, the bake did.
+
+**88.10b …AND WHAT BOTH DO IS SKIP THE INJECTION.** In `_activateAsync`, `injectGantt()` is inside
+`if (!_placeOps.length)`. `Hospital_silent.db` SHIPS with 63,415 persisted `ELEMENT_PLACE` rows, so
+that branch is never entered. Measured across every bake in this session and the v86 one:
+
+```
+§GANTT_SOURCE      0 lines      ← injectGantt never ran, captured OR generated
+§GANTT_CACHE_HIT   0 lines      ← not the IDB fast path either (fresh --profile, empty IDB)
+§TM_OPS_CHECK      place=63415  ← the persisted table was simply adopted
+```
+
+This is also why `§CPE_BUILDUP_SOURCE … capActive=false`: `_capActive` is set inside injectGantt's
+captured branch, and that branch never executed. `injectGantt`'s `_cap.guidTask` join — which reads
+`task_elements` directly and would have put those 28 foundation walls back in
+`TASK_Substructure_Level_1` — is bypassed on every open, in the browser as much as in the bake.
+
+**88.10c THE GATE THAT SHOULD HAVE CAUGHT IT CHECKS THE WRONG THING.** The only staleness test on
+that persisted table is
+```js
+function _kernelOpsSchedStale(placeOps, currentVersion) {
+  return !!(… placeOps[0].parameters._genVersion !== currentVersion);
+}
+var _GANTT_CACHE_VERSION = 39;   // §STOREY_DATUM_FRAME (2026-09-03)
+```
+The ops carry `_genVersion: 39`; current is 39 → **not stale**, adopted verbatim. That stamp answers
+"were these ops produced by the current ALGORITHM?" It never asks "do these ops still agree with
+`tasks` / `task_elements`?" So a misassignment, once written, is immortal until a human bumps the
+constant — and §88.9's 28 walls have been replayed by every bake since.
+
+**88.10d CORRECTION TO §88.9b — the two disagreements have OPPOSITE polarity.** Checked each
+mismatched op's task storey against the element's own `elements_meta.storey`:
+
+| mismatch class | count | which side matches the element's own storey |
+|---|---|---|
+| phase shift (`Substructure → Architecture_Envelope`) | 28 | **`task_elements` is right**, the op is wrong |
+| storey shift (one level up) | 13,546 | **the op is right** (7,491 exact matches), `task_elements` matches **0** |
+
+So `task_elements` is the stale side on the storey axis (a `materializeZones` band artifact), and the
+op is the stale side on the phase axis. **"Just re-derive from `task_elements`" is therefore the
+WRONG fix** — it would repair the 28 and break 13,546. §88.9a is amended accordingly: fix the
+classifier, not the source. The task bucket must be chosen with the SAME `matchRule(cls, name)`
+result (including `SEQUENCE_NAME_OVERRIDES`) that already produced `phase: "Substructure"` and
+`_cell: "L0·T1·L0"` on those very ops.
+
+**88.10e IT DOES NOT HARD-FAIL WITH NO SCHEDULE, AND THAT IS A SEPARATE BUG.** Trace the no-timeline
+path: `injectGantt()` false → `§TIME_MACHINE no ops and no elements` → `activate` resolves false →
+`tmActivateForBake` returns false → the CLI logs
+```
+§CLI_BAKE_TM_PRIME FAILED …
+⚠ buildup will be skipped by the bake (no timeline)
+```
+…and **continues**. `S.fatal` is only ever set by `§MAXQ_FAIL` or a `--max-frame-ms` breach, and the
+process exits `aborted || !fileOk ? 1 : 0` — a film with no buildup is still a file, so **exit 0**.
+Same for `§CPE_BUILDUP_ARM_GATE timeout … refusing to arm a cursor that cannot move`: it warns and
+the bake proceeds. A run that was ASKED for `--buildup` and silently delivered a film without one
+should set `S.fatal` and exit non-zero, exactly as R7/§80.1 require elsewhere — "exit code alone is
+not evidence" cuts both ways, and here the exit code is actively misleading.
