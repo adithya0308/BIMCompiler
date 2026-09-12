@@ -4984,10 +4984,23 @@ the rest of the film, including the closing reveal. A viewer looking at where th
 should be sees the ground plane: exactly the reported symptom, and it explains why it persists to
 the reveal rather than clearing once construction completes.
 
-**The decisive test, cheap:** render one frame with the ground plane suppressed (or `groundZ`
-dropped below 165.36) and see whether the 8,899 m² floor appears. If it does, the fix is in how
-`groundZ` is derived — a plane placed AT the first above-ground element will always be coplanar
-with it — not in the buildup or the data.
+**⚠ THIS IS A SUSPECT, NOT A CAUSE.** The coincidence is exact and the mechanism is plausible, but
+nothing here observes a rendered frame — the whole chain above is read off logs and the DB. Two
+numbers being equal is not proof one hid the other. **Establish causation before changing code.**
+
+**Trace it in this order, each step falsifiable on its own:**
+1. **Confirm the symptom in a frame, not in prose.** Pull a frame from the recovered film at the
+   reveal and at ~5 s and confirm what is actually drawn where the floor should be. The frames are
+   still on disk as WebP in `/tmp/silent-bake-profile-8544/.../indexeddb.blob` (4,699 of them,
+   contiguous hex-ordered ids 0x2..0x125c, verified frame-ordered by PSNR) — no re-bake needed to
+   look.
+2. **Isolate the plane.** Render one frame with the ground plane suppressed, or `groundZ` dropped
+   below 165.36. If the 8,899 m² floor appears, causation is established and the fix is in how
+   `groundZ` is derived — a plane placed AT the first above-ground element is always coplanar with
+   it. If the floor is STILL absent, the ground plane is exonerated and 88.3's instrumentation is
+   the only way forward.
+3. **Only then change anything.** Per the Log Mandate and §80.1: grep a real log and quote the
+   number that moved. "Code changed" is not "behaviour changed".
 
 **RULED OUT by 88.1-88.3 and the reveal observation, do not re-test:** ordering within the task
 (the reveal is post-top-out and still shows ground); missing or empty geometry (all 35 slabs carry
