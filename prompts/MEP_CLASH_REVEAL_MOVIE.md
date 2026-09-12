@@ -4914,3 +4914,68 @@ the user has applied is honoured rather than silently ignored.
 report cannot go below it; §81.3's twice-observed load-time kill sits on exactly this path. Findings-only
 makes that cost the WHOLE cost instead of 1.7% of it, which is what makes it worth attacking — but
 §81.3's own advice stands: measure peak RSS across the load phase before changing anything.
+
+### 88. ASSIGNED (2026-09-12) — §BUILDUP_GROUND_SLAB: the Hospital ground-floor slab is not built in
+### the opening seconds. OWNER: a NEW session. Everything below is evidence, not a diagnosis.
+**Origin: the user, eyeballing the recovered Hospital v86 film** — *"indeed it has gone missing
+during initial seconds, not built.. i think was another slight session interrupt which is
+concerning."* Handed over deliberately so it is picked up fresh rather than guessed at here.
+
+**88.1 RULED OUT — do not re-investigate these.**
+- **The data is intact, and the bake did not touch it.** `IfcSlab = 35` identically in
+  `Hospital_extracted.db` (265 MB, closest to the IFC import), `Hospital_meta.db`,
+  `HospitalAjaibPath.db` and `Hospital_silent.db` — same per-storey split, same z-range
+  164.93..203.22 in every one. Full trace in bim-ootb `prompts/STRUCTURAL_SANITY.md` **T10**.
+- **The slab itself is present and normal-sized.** Level 1 carries an **8,899 m²**
+  `Floor:Concrete-150 mm slab on 300mm base` at x −5..94, y 38..128, z 165.59 — in line with L2
+  8,963 · L3 9,192 · L4 8,270 · L5 8,343. 553 `IfcFooting` sit under it at z 161.51..165.06.
+- **The schedule is coherent and complete.** `§CPE_BUILDUP_SOURCE source=captured leafTasks=41
+  summarySkipped=1 covered=63415/63415 pct=100%`. 42 tasks, 63,415 `task_elements`. The 8,899 m²
+  slab belongs to **`Superstructure — Level 1` (2026-01-12 .. 2026-01-25)**, the third task in the
+  schedule after `Project` and `Substructure — Level 1`.
+- **No interrupt is visible in the opening.** The v86 log has no `§MAXQ_FAIL`, no
+  `§CPE_BUILDUP_SKIP`, no `PAGEERROR`, no `§MAXQ_GL_LOST` anywhere near the first frames. The only
+  SIGTERM in that run arrived at **frame 4698/4699**, i.e. at the very end, during the final write
+  (see §CLI_BAKE_POINT_OF_NO_RETURN, fixed separately). The user's interrupt hypothesis is
+  reasonable but is **not supported by this log** — check it against a fresh bake before assuming.
+
+**88.2 THE ARITHMETIC SAYS IT SHOULD BE UP BY ~2 SECONDS, WHICH IS WHY THIS NEEDS LOOKING AT.**
+Pacing is `§CPE_BUILDUP_PACING mode=work ops=63415` — `t` is share of ELEMENTS placed, not days.
+`Substructure — Level 1` is 583 elements and `Superstructure — Level 1` is 747, so the slab's own
+task completes at **1,330 / 63,415 = 2.1%** of the work. Measured progression:
+
+```
+frame=0/4699    t=0.000  placed=1/63415      groundOpacity=0.220
+frame=60/4699   t=0.035  placed=1575/63415   groundOpacity=1.000     <- past 1,330 by 2.5 s
+frame=120/4699  t=0.071  placed=3142/63415
+```
+
+So the ground slab should be standing within roughly the first **two to three seconds**, and
+`placed=1` at frame 0 is the buildup legitimately starting from an empty site — that part is by
+design and is NOT the bug.
+
+**88.3 ⚠ THE BLOCKER, AND THE FIRST THING TO FIX — the log cannot answer the question.**
+`§CPE_BUILDUP` reports **only an aggregate**: `placed=N/63415`. Across the entire 12.9 MB v86 log
+there are **zero** lines naming a placed element — `grep -c 'placed.*guid|§CPE_BUILDUP_PLACED'`
+returns 0. So it is currently impossible to tell from a bake log whether the Level 1 slab was
+placed at frame 50, at frame 4000, or never. **Add per-element placement evidence before
+theorising** — at minimum a `§CPE_BUILDUP_PLACED` line for the first N placements per task, or a
+targeted "when did guid X appear" probe. This is the same lesson §RULE_FILM already learned and
+bim-ootb T8.12 already applied: a count is not evidence, and a rule or a beat that cannot show its
+own working cannot be debugged from its log.
+
+**88.4 THE THREE CANDIDATES, in the order the evidence favours them.** Stated so the next session
+can falsify rather than browse:
+1. **Placed but not drawn.** The op fires, the mesh does not appear — a geometry, material or
+   visibility path specific to a single 8,899 m² element. Test: force the slab visible at t=0 and
+   see whether it renders at all.
+2. **Ordering within the task.** The task is right but the slab is late in its own op sequence, so
+   it lands well after the 2.1% mark. Test: dump the op order inside `Superstructure — Level 1`.
+3. **A real interrupt on an earlier run.** The user's own hypothesis. Test: re-bake a short clip
+   (`--seconds 10`) and eyeball the same window; if it is correct there, the fault was
+   run-specific, not code.
+
+**88.5 WHAT "DONE" LOOKS LIKE.** A `§CPE_BUILDUP_PLACED`-style line naming the Level 1 slab guid
+with the frame it appeared on, from a real bake — and the opening seconds showing a floor. Per
+§80.1 and the Log Mandate: grep a real log and quote the number. Exit code is not evidence, and
+neither is a frame that looks right.
