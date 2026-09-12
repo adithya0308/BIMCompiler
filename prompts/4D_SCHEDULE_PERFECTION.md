@@ -5487,3 +5487,35 @@ element whose support is not finished. Two traps, both measured: teaching it a g
 (§88.7d item 1, struck) makes it ignore the exact case it exists for; and fixing the `_incrOK` stale
 `setVisibleAt` hole WITHOUT steps 1-2 makes MORE floors vanish, not fewer, because that stale `true` is
 currently the only reason Hospital's slab draws at all on `main`.
+
+**§SCHED_TASK_BUCKET_SPLIT_BRAIN — THE OPS ARE A SNAPSHOT OF A `tasks` TABLE THAT NO LONGER EXISTS.**
+*(User: "Since most of the building renders correctly, that floor slab must be some omission in
+variables when the first time we created a silent bake process." The instinct — an omission at
+creation — is right. The location is the DB, not a bake flag.)* Measured on `Hospital_silent.db`:
+
+```
+schedules            SCH_AUTHORED  gen_version=39  display_authored=1  created 2026-01-01
+dated leaf TASKS     2026-01-01 .. 2026-11-26        41 tasks,  329 days
+kernel_ops           2026-09-10 .. 2027-07-17                   310 days
+```
+
+**The ops and the tasks are on different calendars, eight months and 19 days apart.** Yet every op
+carries `_captured: 1`, `_task` and `taskName` — fields only `_writeScheduledChunked` writes, i.e.
+they DID go through the captured branch once, against a `tasks` table whose window was the one they
+still carry. And `schedules.display_authored=1` asserts the task windows are VIEWS of these very
+element times (it is the flag `§CAP_RESCALE_SKIP` and `§OG_SWEEP_SKIP` both key on) — in this DB that
+assertion is simply false.
+
+**So one event explains all three symptoms at once: the `tasks`/`task_elements` tables were
+re-authored (materializeZones) AFTER the ops were captured, and nothing ever re-derived the ops.**
+That single event accounts for the calendar divergence, the 13,546 one-storey `_task` shifts, and the
+28 phase shifts — the ops are frozen against a task table that has since been replaced. It is not a
+`cli_silent_bake.js` flag: the same silent bake on `main` DRAWS the floor (§88.7a), and no CLI
+argument can write rows into a shipped `.db`.
+
+**What this adds to the resolution brief.** Step 1's input signature must cover the `tasks` /
+`task_elements` rows themselves, precisely so that re-authoring them invalidates the ops. Had that
+existed, this DB would have re-derived on the next open and §88 would never have had a symptom. And
+it gives a cheap standing check, independent of everything else: **`display_authored=1` must imply the
+task window equals the op window.** Here it does not, and that single inequality is detectable in one
+SELECT.
