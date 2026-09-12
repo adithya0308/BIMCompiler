@@ -5053,3 +5053,88 @@ there are **0 dangling geometry hashes** in the DB); and the data or the bake (8
 with the frame it appeared on, from a real bake — and the opening seconds showing a floor. Per
 §80.1 and the Log Mandate: grep a real log and quote the number. Exit code is not evidence, and
 neither is a frame that looks right.
+
+**88.6 SYMPTOM CONFIRMED IN REAL FRAMES (2026-09-12). Both §88.4 and §88.4c are now DEAD.**
+Step 1 of §88.4's trace is done. The recovered film is frame-for-frame the bake — `ffprobe` reports
+`nb_frames=4699 r_frame_rate=24/1 duration=195.79s`, the same 4,699 the log counts — so frames were
+read straight from `~/Downloads/Hospital_FULL_1080p_v86_RECOVERED.mp4`; the IndexedDB WebPs were not
+needed. Frames pulled with `ffmpeg -vf select=eq(n\,N)` and read at 1:1 crop:
+
+| frame | film sec | what is actually drawn |
+|---|---|---|
+| 60 | 2.5 s (Day 13, `placed=1575/63415`) | Level 1 walls and columns stand **directly on bare earth**; the rocky ground texture runs continuously under and between them, inside the footprint |
+| 1800 | 75.0 s (Day 310, camera at Level 4) | a normal pale **concrete floor** — upper storeys are fine |
+| 2100 | 87.5 s (Day 310, HUD `Storey: Level 1`) | interior floor is **bare earth with sun shadows**, a wall plinth sitting on it, and a separate grey concrete slab edge visible a step ABOVE the earth |
+| 2400 | 100.0 s (Day 310, `Level 1`) | bare earth again |
+
+So it is **Level 1 specifically**, it is there in the opening AND at full build, and the visible
+surface is the ghost plane's `earth_1k` map. The user's "not built in the initial seconds" and
+"all ground on the return trip" are the same defect seen twice, not two.
+
+**88.6a §88.4 (coplanar ghost plane) is REFUTED — by 0.45 m, arithmetically.**
+The plane is at the slab's UNDERSIDE, not its top: `§GROUND_Y src=gf-storey-slab(Level 1) z=165.36
+y=-15.88`, and the slab's own mesh blob (`component_geometries` hash `c103211caf542f59`, 942 verts)
+is local z **−0.225..+0.225** about `center_z=165.586` → world **165.361..165.811**. The plane is a
+flat `PlaneGeometry(50000, 50000)` (`scene.js` §GROUND_METALLIC_REVERT) with no displacement, no
+`renderOrder`, and no `depthTest`/`depthWrite` override anywhere. A flat plane 0.45 m BELOW a
+surface cannot occlude it from a camera above. Two numbers being equal was indeed not proof — and
+here they are not even the same two numbers. **Do not re-open the coplanarity theory; if the plane
+is ever moved it is for the §88.6d reason, not this one.**
+
+**88.6b §88.4c (§STOREY_REVEAL_XRAY) is REFUTED — that code path does not run in this build.**
+The v86 log has **0** `§STOREY_REVEAL_XRAY` lines, and that is BY DESIGN: §55.1/§55.2 replaced it
+with §FACADE_ONLY_TINT ("Verified: 0 §STOREY_REVEAL_XRAY lines"). What actually ran in the closing
+is `§CPE_REVEAL_ROUND on pulloutSec=1.5 flybackSec=19.8 round2Sec=56.0 tailSec=10.0
+discs=[PLB,FP,ELEC,MEP] totalSec=87.4` — i.e. from film sec 108.4 (frame 2602) the DISCIPLINE
+reveal isolates one discipline at a time, which legitimately hides most of the model (frames 2650
+and 2900 show sky and ground through the structure with only flagged clash steel + MEP drawn).
+**The reveal is therefore NOT independent evidence of this bug** — the opening (frame 60) and the
+Day-310 Level 1 interiors (frames 2100/2400, where nothing is hidden) are what carry it.
+
+**88.6c ALSO REFUTED, do not re-test:**
+- **X-ray staging.** §Z_STACK_XRAY_STAGING's predicate (`_buildXraySupportCache`) recomputed offline
+  against `Hospital_silent.db`: the L1 slab has 81 carriers (73 in-extent, 8 enveloping),
+  `maxCarrierEnd=1789285929202` vs its own `end=1789749776520` → carrier finishes FIRST, so it is
+  **not** one of the `staged=544`.
+- **DLOD.** `§DLOD_DISABLE reason=time-machine` / `§DLOD_TM_GATE elements=63182 threshold=50000
+  large=true` both at +72.5 s — before frame 0. #1660 is not in this path.
+- **Triplanar.** `§TRIPLANAR_INIT class=IfcSlab tex=textures/materials/concrete_color_1k.jpg` — a
+  slab that draws, draws as concrete. It is not wearing the ground texture.
+- **The schedule.** The slab has exactly ONE `ELEMENT_PLACE` op (`kernel_ops` id 646, phase
+  `Superstructure`, storey `Level 1`), and by `end_ts` it ranks **805 / 63,415** — 1.27 % of the
+  work, i.e. **~frame 31 (1.3 s)**. The film's own beat planner agrees independently:
+  `§SLAB_BEAT_POOL 1.07s Level 1 8,899m2 z=165.59`. It is scheduled; it does not appear.
+
+**88.6d THE QUESTION IS NOW NARROW, AND IT IS EXACTLY §88.3'S BLOCKER.** At a cursor past
+`end_ts=1789749776520`, `applyCursor`'s traverse marks `placed[guid]=true` and then walks the SCENE
+looking for meshes whose `userData.guid` matches. Three states are indistinguishable in every log
+this codebase writes today:
+1. **no mesh** — nothing in the scene carries that guid (streaming never built it, or it lives
+   inside a BatchedMesh/InstancedMesh the traverse does not reach by guid);
+2. **mesh present, left hidden** — found, but `visible` stays false;
+3. **mesh present and visible** — drawn, and something else is in front of it.
+`§CPE_BUILDUP placed=N/63415` counts OPS, never meshes, so it reads identically in all three.
+
+**88.6e SPEC — `§CPE_BUILDUP_PLACED`, the §88.3 fix.** In `time_machine.js`'s single unified
+traverse (the one that already sets visibility), maintain a small WATCH SET of guids and emit ONE
+line per guid per STATE CHANGE — never per frame, so a 4,699-frame bake adds a handful of lines:
+```
+§CPE_BUILDUP_PLACED frame=31 guid=0e8pm26Tv5vPrj6zU55MOH cls=IfcSlab storey="Level 1"
+  op=placed mesh=found visible=true y=-15.43 host=Mesh — first frame this guid is drawn
+§CPE_BUILDUP_PLACED frame=31 guid=… op=placed mesh=MISSING visible=false — scheduled, no mesh carries this guid
+```
+- **Watch set**, in order: `?watch=<guid,guid>` on the viewer URL if present; else the largest slab
+  per storey (the §SLAB_BEAT pool already computes these), capped at 16.
+- **Fields**: `frame`, `guid`, `cls`, `storey`, `op` (`pending|frontier|placed`), `mesh`
+  (`MISSING|found`), `visible`, world `y`, `host` (`Mesh|IM|BM`).
+- **Cost**: one `Object.create(null)` lookup per traversed mesh against a ≤16-key set. Nothing else
+  per frame.
+- **Summary at top-out**: `§CPE_BUILDUP_PLACED_SUMMARY watched=N drawn=M neverDrawn=[guid,…]`.
+This is the §RULE_FILM / bim-ootb T8.12 lesson applied: a count is not evidence.
+
+**88.6f THE DECISIVE RUN — cheaper than a bake.** `cli_silent_bake.js` already takes
+`--tap file.js` (a page script installed at document start, whose `window.__maxqTapReport()` is
+logged as `§CLI_BAKE_TAP` and written to `<out>_tap.json`). A tap that, once the building is loaded,
+sets the cursor to the slab's `end_ts` and reports which of §88.6d's three states holds answers this
+in one short run — the 71.3 s load dominates, not the film. Run it BEFORE changing any render code;
+per §80.1, grep the log and quote the number that moved.

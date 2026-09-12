@@ -2674,3 +2674,121 @@ before and after.
    still a different defect.
 3. **The 4th true orphan** (`00szGmqsL8Tv_ErgPOhgVh`) is invisible to `contactGraph` in both
    directions; §N's `§FIX` should be checked against it as well as the three balconies.
+
+## §O.6 ⛔ RETRACTION OF METHOD — THE FRAME/CAMERA/IoU IDENTIFICATION IN §O.1 IS RETIRED (user directive 2026-09-11)
+
+User: *"Try other means to avoid visual, it's GIGO. WITNESS logging debug"*.
+
+**The method is withdrawn, not just discouraged.** §O.1 identified the element by extracting frames,
+solving for the bake camera, projecting 6,880 bboxes and ranking by IoU. Every step of that chain is
+an inference over pixels — a lossy 854×480 H.264 render, a camera recovered by numerical fit, a
+silhouette overlap score. It happened to land on a defensible element; **that is luck, not evidence,
+and it is not the standard this file holds.** Nothing in this repo may rest on it again. The standing
+rule that already covered this (`bim-ootb` CLAUDE.md, "check module deps before 'needs a browser'
+claims — write a `witness_*.js` instead") applies to *rendering* questions too: if the question is
+"what did the engine decide", ask the engine's own code and its own log, never the picture.
+
+**WHAT SURVIVES, RE-GROUNDED ON DATA:**
+
+| §O.1 claim | status now |
+|---|---|
+| A teal element is drawn in the opening seconds | **holds** — but see below; it is now carried by §O.2's colour derivation, not by the frame scan |
+| The teal comes from `STD_MAT.IfcBuildingElementProxy` | **holds** — DB + `streaming.js` source only, no pixels |
+| ⇒ the element is a member of a **proxy-led batch bucket** | **holds** — derived from the shipped bucket key over `elements_meta`: on HHS exactly **three** buckets (`Level 1/2/3｜ARC｜_default｜｜｜-`) hold **215** elements, of which **85** are not proxies (10 + 38 + 37 `IfcDoor`/`IfcCovering`/`IfcRailing`) |
+| The specific guid `3XrBtx9eX7mQE6EqWHPeEe` | **⛔ UNCONFIRMED.** It came from the retired IoU solve. It is kept below only as a *worked example* of the 85-element population, never as a premise |
+| "5.89 × 7.33 × 0.05 m at z = 9.78 m", "frames 3-36", "appeared at frame 3" | **⛔ UNCONFIRMED** — all pixel-derived |
+
+**THE FIX IN `§FIX-O.2` DOES NOT DEPEND ON THE RETIRED CLAIM.** W-BBCP-1/3/5 are pure DB+source
+measures. **W-BBCP-2 is hereby restated** off the single guid and onto the population the colour
+derivation actually names:
+
+> **W-BBCP-2 (restated)** THE TEAL POPULATION: how many elements are painted with
+> `IfcBuildingElementProxy`'s material while not being `IfcBuildingElementProxy`? That set is exactly
+> the set a viewer can see as an unexplained teal object. Must be **0**. RED on unmodified main.
+
+## §O.7 §O.3 REOPENED — SETTLE THE VISIBILITY GATE BY SLICING IT, NOT BY BAKING IT
+
+§O.3 said the early-reveal half "needs an instrumented bake". **That was the wrong call and is
+withdrawn.** `viewer/time_machine.js` has no `module.exports` and ~436 `document.`/`window.`/`THREE.`
+references, so it cannot be `require`d — but **the visibility gate is a pure predicate over plain
+data**, and the technique for that is already established in this repo (and used two sections up on
+`streaming.js`): **slice the expression out of the source text and evaluate it.**
+
+The gate, `time_machine.js` BatchedMesh branch (~:1544-1548) — the branch that matters, since the
+bake's own `§SHADOW_FRONTIER_IDX meshGuids=0 groupGuids=6839` says *all* geometry is batched/instanced:
+```js
+var bHideForProxy = _dlodOn && !!placed[bg] && !frontier[bg] && recent[bg] === undefined && !_dlodInView(bg);
+var bStaged = !frontier[bg] && (_tmXraySolidifyTs[bg] !== undefined && cursorMs < _tmXraySolidifyTs[bg]);
+if ((placed[bg] || frontier[bg] || recent[bg] !== undefined) && !bHideForProxy && !bStaged) { … setVisibleAt(sid,true) }
+```
+and the single-mesh (~:1449-1472) and InstancedMesh (~:1597-1612) branches in the same shape. Its
+three inputs are built by one loop over `_ops` (~:1260-1285), and `_ops` is `kernel_ops` verbatim
+(:92-111). **Every one of those is plain data. None of it needs a DOM, a GPU or a frame.**
+
+### §WITNESS CLAIMS — `viewer/tests/witness_tm_visibility_gate.js`
+
+Each names the issue it proves or disproves.
+
+- **W-TMV-1 WIRING:** the predicate, the state builder and `loadOps` are **sliced from
+  `viewer/time_machine.js` and evaluated**, never re-typed. If the shipped gate changes, this witness
+  follows it. A failed slice is a FAIL, never a skip.
+- **W-TMV-2 IS THE GATE THE BUG?** Evaluate the real gate for every element of the teal population,
+  at every frame cursor across the opening window, from the real `kernel_ops`. If it ever returns
+  *visible* for an element whose op has not started, the predicate itself is the defect and the
+  offending term is named. If it never does, **the predicate is innocent** and §O.3's fault is
+  elsewhere — which is itself the answer, not a non-answer.
+- **W-TMV-3 MONOTONICITY — can any term inside the gate ADMIT?** `bHideForProxy` and `bStaged` occur
+  only as `&& !x`. Evaluate the sliced predicate over **all four** combinations of those two flags for
+  every element/cursor pair. If no combination turns a hidden slot visible, no term inside the gate
+  can be the source, for any DLOD or staging state — which retires a whole class of hypotheses without
+  a bake.
+- **W-TMV-4 THE `§PERF_INCR` DELTA SKIP (`:1535`/`:1597`), PROVED OR DISPROVED:** build the real event
+  index with the **sliced** `_tmBuildEventIndex`/`_tmHasEventIn` over the real `_ops` and a
+  `_batchMeta` reconstructed with the shipped bucket key, then ask, per frame tick, whether the mesh
+  owning the teal population has an event in `(_dLo,_dHi]`. A skipped object keeps its PREVIOUS slot
+  state. Report the skip count. **A skip alone cannot create visibility** — it can only preserve it —
+  so this claim settles whether the delta path is *sufficient* (it is not, if the last full pass hid
+  the slot) or merely an *amplifier*.
+- **W-TMV-5 WHERE A SLOT IS BORN:** `streaming.js` creates every BatchedMesh slot **visible** and only
+  ever calls `setVisibleAt(slot,false)` for the storey/disc filter. Assert that from the sliced source.
+  Combined with W-TMV-2/3/4 this localises the defect to *"a slot that no traverse ever wrote, or a
+  writer outside the traverse"* and enumerates the out-of-traverse writers that exist.
+- **W-TMV-6 EVERY MESH IS INDEXED:** `_tmBuildEventIndex` only records a mesh if its members have op
+  timestamps; `_tmHasEventIn(undefined,…)` is `false`, i.e. **skip forever**. Assert that every
+  reconstructed mesh has at least one indexed event, so "an unindexed mesh is skipped for the whole
+  film" is ruled out on this data rather than assumed away.
+- **NOT CLAIMED:** none of this proves what the *live* slot state was during the bake. That is what
+  the logging below is for.
+
+### §TM_VIS_AUDIT — THE LOG LINE THAT MAKES THE NEXT BAKE ANSWER IT
+
+Where the witness cannot reach (the live slot state inside a running bake), **the engine must say it
+itself** rather than leave it to be inferred. Add a budgeted audit pass at the END of
+`renderAtTime`: for each `_batchMeta` mesh, compare the slot's ACTUAL `getVisibleAt(sid)` against what
+the gate predicate says it should be, and log every disagreement by guid, naming the branch and the
+term that decided it, plus whether that object was skipped by the delta path this tick.
+
+- A mismatch after the traverse = a slot the traverse did not correct ⇒ skipped object, or an
+  out-of-traverse writer. **That is exactly the open question, answered as a log line.**
+- Budget: the first 40 ticks (the reported window) plus `window.__TM_VIS_AUDIT` for on-demand use.
+  It must cost nothing on the other ~1,917 ticks — otherwise it will be turned off and never run.
+- It must be VACUOUS-SAFE: if the scene has no `_batchMeta` it must say so out loud, not print `0`.
+
+### §PREDICTION — WRITTEN BEFORE THE WITNESS WAS RUN. FALSIFIABLE.
+
+- **Q1** W-TMV-2 comes back **INNOCENT**: for every element of the teal population, at every cursor
+  before its own `start_ts`, the sliced gate returns hidden. Reason: the admit term is
+  `placed || frontier || recent !== undefined`, and all three are built only from `_ops`, where the
+  earliest op start for any non-proxy member of a proxy-led bucket is `IfcRailing` 1789569228781 —
+  later than the whole opening window. If instead it returns visible, Q1 is falsified and the gate is
+  the bug.
+- **Q2** W-TMV-3 finds **0** admitting combinations out of 4 — no internal term can turn a hidden
+  slot visible.
+- **Q3** W-TMV-4 finds the owning mesh **skipped on most opening ticks** but with **≥1** event
+  somewhere in the film (W-TMV-6 green), so the delta path is an amplifier, not the source.
+- **Q4** Therefore the defect is **outside** the gate. The surviving candidates, to be discriminated
+  by `§TM_VIS_AUDIT` in the next bake, are: (a) a slot born visible whose mesh is never processed
+  while unplaced, and (b) an out-of-traverse writer — `panels.js` `filterStorey`→`filterBatchedMesh`,
+  `grid_views.js`, `doc_canvas.js`, `dlod_nav.js`.
+- **Q5 — THE HONEST ONE:** this round ships **no behaviour change** to the reveal. If someone re-bakes
+  and the early object is gone, Q5 is falsified and one of the above was wrong.
