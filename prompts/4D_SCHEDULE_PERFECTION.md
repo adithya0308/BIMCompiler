@@ -5557,3 +5557,62 @@ when it differs; then the two homes cannot disagree, because both are the same p
 same OCI bytes. Step 2 (one classifier, one phase answer) is what makes that derivation correct once
 it runs. Step 4's JKR finding (70 slabs, 226 late carriers, 0 self-contradictory ops) is untouched by
 either and remains the open one.
+
+**§SCHED_TASK_BUCKET_SPLIT_BRAIN — MEASURED IN A REAL BROWSER (2026-09-12). The frozen ops are wrong;
+re-deriving fixes them. And §SCHED_BROWSER_IS_OK was NOT reproduced.**
+Four headful-GPU runs (NVIDIA RTX 4060 via ANGLE gl-egl), driving the user's own path — Alt+C
+(`scene.js:3131` → `startMaxQualityOrbit`) then a real DOM click on `#cpe-ok` → `finish('ok')`
+(`cinema_path_editor.js:3857`), panel confirmed `{"buildup":true}` so `cinema_maxq.js:1426
+tmActivateForBake()` really ran.
+
+**A (cold, new profile) and B (warm, same profile) are byte-identical to the CLI:**
+```
+§GANTT_SOURCE        0 lines        §GANTT_CACHE_HIT   0 lines      §CACHE_PUT  0 lines
+§TM_OPS_CHECK total=63415 place=63415
+§AUTHOR_DETECT ... genVersion=39 current=39 stale=false safeToRegen=false
+§CPE_BUILDUP_SOURCE ... capOps=63415/63415 capActive=false window=2026-09-10..2027-07-17
+__tmXrayProbe('map')  staged=544  map['0e8pm26Tv5vPrj6zU55MOH'] = 1789798254510
+```
+Warm is not different because the cold run **never wrote a cache**: the frozen-ops branch returns
+before `cachePut('gantt')`. Screenshots at cursor 1789760000000 = **bare earth**, at 1789800000000
+(13.47 h later) = **the full 8,899 m² deck**. ⚠ **So "it is ok when running Time Machine on browser"
+did NOT reproduce on the shipped DB.** The one mechanism consistent with it: a profile that ever
+derived once holds `§CACHE_PUT key=gantt:v39:Hospital size=29328KB` — CORRECT ops — and every later
+open serves them via `§GANTT_CACHE_HIT`. That is a hypothesis from an observed cache write, not an
+observation of the user's session.
+
+**C/D (forced: `DELETE FROM kernel_ops WHERE op_type='ELEMENT_PLACE'` in memory, then activate):**
+```
+§TM_OPS_CHECK total=3 place=0
+§GANTT_SOURCE captured tasks=41 covered=63415 generated=0 total=63415 pct=100
+§TIME_MACHINE ON — 63418 ops, 321 days, project: 1/10/2026 → 11/26/2026   ← now MATCHES tasks
+§XRAY_EDGES staged=501/63415                                              ← was 544
+wall 3iM76qwej9Tf9ttHcbQrdG  _task="TASK_Substructure_Level_1"  (was Architecture_Envelope)
+   → finishes 11.8 DAYS BEFORE the slab instead of 13.47 h after
+map['0e8pm26Tv5vPrj6zU55MOH'] === undefined                               ← the slab leaves staging
+```
+and the floor draws at its own `_end_ts` with no hole.
+
+**So the verdict is (a), and it is narrow.** Nothing is wrong with the staging gate, the renderer, the
+bake, the classifier as it runs live, or the two-homes architecture. **The shipped Hospital DB's
+frozen `ELEMENT_PLACE` rows are simply wrong** — 13,574 of 63,415 (21.4 %) carry a `_task` that
+contradicts the DB's own `task_elements`, including all 28 foundation walls — and they are adopted
+because `_genVersion=39` equals `_GANTT_CACHE_VERSION=39`, so `_kernelOpsSchedStale` reports
+`stale=false`. Hospital is the only building where that equality holds (Terminal/JKR ship no
+`kernel_ops`; HHS's are stamped 38). **The tables are right; only the cached answer is wrong.**
+
+**THE FIX IS THE STALENESS DECISION, AND NOTHING ELSE.** Make Hospital's ops re-derive — bump the
+constant, or add the agreement test — and the measurement above is the acceptance evidence:
+`§GANTT_SOURCE` appears, the wall lands in Substructure, `staged` drops 544 → 501, the slab leaves
+the map, the floor is on time. Do NOT pursue: a ground-bearing exemption in the gate, the
+`_incrOK`/`setVisibleAt` path, §BATCH_BUCKET_CLASS_PAINT, or the in-extent GAP constant (tested:
+tightening it moves Hospital 60 → 55 late carriers and moves HHS and JKR not at all).
+
+**Incidental, and it explains the user's "open Time Machine first":** with `ELEMENT_PLACE` deleted,
+Alt+C → OK refuses outright — `§CPE_BUILDUP_SKIP reason=no schedule generated yet — open Time Machine
+first` (§CPE_BUILDUP_REQUIRE_TM_FIRST). **The movie button never derives; only a Time Machine open
+does.** So the "automatic timeline injection" is that one open, and a host that never performs it
+cannot correct a bad cached schedule by baking.
+
+**STILL OPEN, untouched by any of this:** JKR — 70 slabs with late carriers, 226 of them, worst
+257.30 h, with ZERO self-contradictory ops and no `kernel_ops` to blame.
