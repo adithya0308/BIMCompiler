@@ -5440,3 +5440,50 @@ assert the op set is identical. `viewer/tests/witness_schedule_coherence.js` alr
 persisted; the missing half is asserting what SHOULD be derived, and neither half needs a browser.
 
 **Until that gate exists, nothing in this section describes anything but a bake.**
+
+**§SCHED_TASK_BUCKET_SPLIT_BRAIN — HOW TO RESOLVE IT (2026-09-12, brief for the dedicated 4D session).**
+Four steps, in this order. Steps 1 and 2 are the fix; 3 is the acceptance bar; 4 is what is left over.
+
+**1. Make `kernel_ops` a CACHE of a derivation, not a stored answer.** This is the separation-of-concern
+fix and it subsumes the host question. Today `_activateAsync` re-derives only when the table is EMPTY
+(`if (!_placeOps.length)`), and the one staleness gate —
+`_kernelOpsSchedStale`: `_genVersion !== _GANTT_CACHE_VERSION` — asks whether the current ALGORITHM
+produced the ops, never whether they still match the MODEL. So the timeline is whatever was frozen in
+the last time someone injected, and `tmHasExistingSchedule()` answers `true` straight off those rows.
+- Replace the version stamp with an **input signature**: a cheap hash over exactly what the derivation
+  reads — the dated leaf `tasks` rows, `task_elements`, each element's classification inputs
+  (`ifc_class`, `element_name`, `storey`), and the rates/override table version. Stamp it on the ops.
+- On activate, recompute the signature and re-derive when it differs. Same signature gates the IDB
+  `gantt` cache.
+- The property to hold: **same `.db` ⇒ same ops, from either host.** IndexedDB and the `--profile`
+  directory become caches of that function and can never change the answer — a cache whose absence
+  changes the answer is not a cache. `§CPE_BUILDUP_FOLLOW_TM` ("the film PLAYS the Time Machine, it
+  does not author an order") already states the doctrine; this makes it true of the data too.
+
+**2. Fix the classifier that produced the wrong answer** — otherwise step 1 just re-derives it faithfully.
+One element currently gets TWO phase answers: `matchRule(cls, name)` (with `SEQUENCE_NAME_OVERRIDES`)
+writes `phase`/`seq`/`_cell`, while the task bucket is taken from the bare class table. On Hospital's
+28 Level 1 "Foundation" walls that is `Substructure` vs `Architecture_Envelope`. **One classifier call,
+one answer, consumed by both lanes.**
+⚠ Do NOT "fix" this by re-deriving the bucket from `task_elements`: the polarity check says it is the
+STALE side on the storey axis (the op matches `elements_meta.storey` 7,491 times, `task_elements` 0).
+Fix the classifier, not the source.
+
+**3. Acceptance — host-independent by construction, no browser in the loop.**
+- `G-SC-SELF = 0`: no op's own `phase` may disagree with its own `_task` bucket. Hospital is at 39.
+- Determinism: run the shipped derivation in node against the same `.db` twice — cold and warm — and
+  assert the op set is byte-identical. This is the gate that would have caught the whole class.
+- `viewer/tests/witness_schedule_coherence.js` (W-SCHED-COHERE) already reads what is persisted; the
+  missing half is asserting what SHOULD be derived. Neither half needs a GPU or a browser.
+
+**4. WHAT WILL STILL BE BROKEN AFTERWARDS — the user's own instinct, and the measurement backs it.**
+`G-SC-CARRY` is INDEPENDENT of `G-SC-SELF`. **JKR: 70 slabs with late carriers, 226 of them, worst
+257.30 h — with ZERO self-contradictory ops.** Steps 1-2 cannot touch that. Re-run W-SCHED-COHERE after
+the fix; whatever `G-SC-CARRY` still reports is the remaining, unfound defect, and Hospital's own 19
+slabs should be re-checked against it too — §88's ground slab was never a singleton.
+
+**AND DO NOT "FIX" THE STAGING GATE.** `§XRAY_STAGING_REMOVED` is correct: it refuses to draw an
+element whose support is not finished. Two traps, both measured: teaching it a ground-bearing exemption
+(§88.7d item 1, struck) makes it ignore the exact case it exists for; and fixing the `_incrOK` stale
+`setVisibleAt` hole WITHOUT steps 1-2 makes MORE floors vanish, not fewer, because that stale `true` is
+currently the only reason Hospital's slab draws at all on `main`.
