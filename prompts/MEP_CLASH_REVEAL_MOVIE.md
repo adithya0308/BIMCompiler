@@ -5080,9 +5080,18 @@ is small or occluded, and the interior the stat card is describing.**
 3. **1.25 s per storey is the real budget.** 8 storeys in a 10.04 s window of a 195.8 s film. Whatever
    is designed has to be legible in 1.25 s — that constraint, not the tint colour, is what makes this
    a wow beat or a blink.
-4. **The stat card already works.** `doors=114 walkable=6481m2 footprint=98.6x90.3m rooms=4` lands
-   every time. If the geometry cannot be made to read, consider whether the card carrying the beat —
-   with the storey named and the building silhouetted — is the honest version of this effect.
+4. **The stat card already works and STAYS — it is not the fallback.** `doors=114 walkable=6481m2
+   footprint=98.6x90.3m rooms=4` lands every time; the HUD half of this beat is sound and the user
+   wants it kept alongside the geometry, not instead of it.
+
+**90.4a THE USER'S OWN DIRECTION FOR THE NEW SESSION (2026-09-13, verbatim intent):** *"repair it to
+truly show the facade of each storey well, with the HUD info, and continue creating more wow
+moments."* So the goal is NOT to decide the geometry cannot read and retreat to the card. **Each
+storey's facade must genuinely be shown**, legibly, with its stat card riding along — and the closing
+sequence is expected to grow more such moments, not fewer. Read §90.3's retired approaches as
+constraints on HOW, never as evidence that it cannot be done: the camera and the beat structure are
+untouched ground, and §FACADE_ONLY_TINT already proves the per-storey facade SET is computable
+(`meshesTouched` is non-zero for all 8). The unsolved problem is making that set fill the frame.
 
 **90.5 DO NOT RE-TEST.** §STOREY_REVEAL_XRAY is dead code in this build (0 lines, §55.1). The reveal
 window arithmetic is correct (`realWindowSec=10.04 = windowFrac 0.0513 × 195.8 s`). `meshesTouched`
