@@ -5290,3 +5290,57 @@ and report. Two changes, both in `cli_silent_bake.js`, neither touching the view
 
 **So the only change this file's lane owns is §CLI_BAKE_FAIL_NO_TIMELINE** — the bake reporting its
 OWN failure honestly. Everything about the schedule it replays is the 4D lane's.
+
+## §89 THE TINT CONTRACT IS A CROSS-FILE DEPENDENCY AND NOTHING WAS GUARDING IT (2026-09-13, `fix/bucket-key-floor` @ `ee7666ac`, worktree `/tmp/wt-v87`)
+
+**89.1 WHAT HAPPENED.** The v87 merge of `origin/main` into the rule-findings film branch took main's
+`viewer/rule_checklist.js` wholesale. Main's copy never had the film-facing half of the tint API, so
+the merge DELETED, in one file, everything §62/§67/§70/§70.6/§71/§78 had added there:
+`A._ruleTintAt` (the per-guid world-position map), `A.ruleTintShowOnly` (the §78 intensity driver of
+the depth wave), the `opts` third argument (`shineThrough`/`filled`), `ruleTintRowsFor`'s SECOND
+table (`spatial_structure`, i.e. every injected ROOM), and the `userData.ruleTintGuids/ruleTintMats`
+the wave writes through. The 1080p v87 bake then logged `§RULE_FILM sets=5 marked=398` — findings
+produced, hardened counts correct — next to `§RULE_FILM_DWELL members=0 everVisible=0 ms=1` and ZERO
+`§RULE_FILM_SETS` lines: no box drew for the whole film.
+
+**89.2 THE ENGINES WERE NOT THE CAUSE — measured, not assumed.** Both `evaluate()` returns were run
+side by side against `buildings/Hospital_meta.db` in one node harness before anything was edited.
+Branch: `{guid, ifc_class, name, storey, rule, severity, ratio}` (+`target` on egress). Main: the
+same seven keys plus an ADDITIVE `witness` (#1718 T8). `guid` is a non-empty string on 100% of rows
+on both sides (488/488 and 384/384 structural, 145/145 and 142/142 egress). The return shape is
+backward-compatible; `st.guids` was never the broken link. Always measure both shapes before
+adapting one to the other — the obvious suspect here was innocent.
+
+**89.3 THE REAL LINK.** `rule_findings_film.js` reads `A._ruleTintAt` TWICE — the §77.3 dwell
+precompute (`_allGuids` only admits a guid that has an entry) and the per-frame composite
+(`if (!ctx || !_sets.length || !cam || !at ...) return 0`, which is ABOVE the `§RULE_FILM_SETS` log).
+One missing producer therefore silenced the members count AND the whole per-frame log in one stroke.
+§87.3 already names this dependency in prose; nothing enforced it.
+
+**89.4 THE FIX — restore the producer, in the rules-presentation lane.** The film-facing tint code
+was re-applied onto main's `rule_checklist.js` (145+/19-), NOT reverted file-wise: main's #1718 T8
+report/sufficiency/witness work and `_rcShowLongestExitStatus` are untouched, and the panel's own
+call `A.showRuleModeTint(map, colorMap)` keeps main's exact material and `renderOrder = -1` because
+every film-only behaviour hangs off the absent third argument. Re-deriving the positions inside the
+film was rejected: §70's "these are the SAME points the boxes were placed at" is the invariant, and a
+film-side copy would have anchored room labels at rooms that main's element_transforms-only query
+draws no marker for at all.
+
+**89.5 MEASURED AFTER (clip bake `--clip 0:0.05 --measure --fps 24 --gpu real`, `out/rf_test.log`).**
+`§RULE_FILM sets=5 marked=398 structuralTotal=384 egressTotal=14` (hardened counts survive the fix)
+· `§RULE_TINT_ROOM_GEOM n=6 resolved from spatial_structure` · `§RULE_TINT_NO_GEOM n=8` (synthetic
+`CORRIDOR_ROOM::*` guids, in neither table — named, never silent) · `§RULE_TINT_ENTER elements=390
+colors=2 guidsAsked=398 shineThrough=true renderOrder=900` · `§RULE_FILM_DWELL members=390
+everVisible=390 ms=18` (was `members=0 ... ms=1`) · 10 `§RULE_FILM_SETS` lines with a populated
+`visible={...}` · `§CLI_BAKE_WALL totalSec=171 aborted=no fileOk=true`. 398 asked − 8 geometry-less
+corridor guids = 390: the gap is explained by a log line, not by a guess.
+
+**89.6 WHY EVERY TEST STAYED GREEN — and the check that earns its place.** `witness_rule_findings_film.js`
+STUBS `showRuleModeTint` and assigns `_ruleTintAt` itself (`A: { showRuleModeTint: function () { this._ruleTintAt = AT; } }`),
+which is right for the film's own logic but means the witness cannot see the real producer vanish;
+`tests/test_rule_mode_tint.js` only guards the material constant. So 37 + 11 + 26 + 108 checks passed
+against a film that drew nothing. New check **C1 CONTRACT** in the film witness asserts, against the
+real `viewer/rule_checklist.js` SOURCE, that both `A._ruleTintAt =` and `A.ruleTintShowOnly =` are
+still defined there — the cheapest possible guard on a dependency that only a merge can break, and
+the one that disproves this exact regression. A witness that mocks a collaborator must also assert
+the collaborator still exists.
