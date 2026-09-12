@@ -5299,14 +5299,15 @@ branch — the identical line, same numbers, in the v86 branch bake and in a `ma
 ```
 §TM_OPS_CHECK total=63415 place=63415
 ```
-There is no separate bake schedule path to blame. Whatever the browser would do here, the bake did.
+There is no separate bake schedule path to blame: the bake calls the shipped verb. What the BROWSER
+does was NOT measured — see §SCHED_BROWSER_IS_OK below before reading any of this as browser behaviour.
 
 **88.10b …AND WHAT BOTH DO IS SKIP THE INJECTION.** In `_activateAsync`, `injectGantt()` is inside
 `if (!_placeOps.length)`. `Hospital_silent.db` SHIPS with 63,415 persisted `ELEMENT_PLACE` rows, so
 that branch is never entered. Measured across every bake in this session and the v86 one:
 
 ```
-§GANTT_SOURCE      0 lines      ← injectGantt never ran, captured OR generated
+§GANTT_SOURCE      0 lines      ← injectGantt never ran in the BAKE, captured OR generated
 §GANTT_CACHE_HIT   0 lines      ← not the IDB fast path either (fresh --profile, empty IDB)
 §TM_OPS_CHECK      place=63415  ← the persisted table was simply adopted
 ```
@@ -5314,7 +5315,8 @@ that branch is never entered. Measured across every bake in this session and the
 This is also why `§CPE_BUILDUP_SOURCE … capActive=false`: `_capActive` is set inside injectGantt's
 captured branch, and that branch never executed. `injectGantt`'s `_cap.guidTask` join — which reads
 `task_elements` directly and would have put those 28 foundation walls back in
-`TASK_Substructure_Level_1` — is bypassed on every open, in the browser as much as in the bake.
+`TASK_Substructure_Level_1` — is bypassed on every BAKE open. (Browser: unmeasured, and the user
+reports it is fine — §SCHED_BROWSER_IS_OK.)
 
 **88.10c THE GATE THAT SHOULD HAVE CAUGHT IT CHECKS THE WRONG THING.** The only staleness test on
 that persisted table is
@@ -5392,3 +5394,26 @@ singleton — same shape, a slab scheduled ahead of what holds it up. (2) **JKR 
 inversion (226 late carriers, 10.7 days) with ZERO self-contradictory ops**, so G-SC-SELF and
 G-SC-CARRY are INDEPENDENT: the task-bucket split-brain is not the only route to a slab preceding its
 carriers, and fixing the classifier will not clear JKR. Whatever is doing that there is unfound.
+
+**§SCHED_BROWSER_IS_OK (2026-09-12) — ⚠ CORRECTION, and the gap that matters most.**
+*(User: "But it is ok when running Time machine on browser. Don't transgress such truth.")* Correct,
+and the sections above originally overreached. **Every `§GANTT_SOURCE` / `§TM_OPS_CHECK` /
+`§CPE_BUILDUP_SOURCE` number in this section was read out of CLI BAKE logs.** No browser session was
+ever observed. I inferred browser parity from reading `_activateAsync` and wrote it as measured —
+that inference is now withdrawn wherever it appeared.
+
+**The user's direct observation outranks it: the Time Machine renders the floor slabs correctly in
+the browser.** So one of these is true, and WHICH ONE is the first thing the dedicated 4D session
+should establish, because it changes the whole shape of the fix:
+1. The browser DOES re-derive — its IndexedDB `gantt` cache is absent or dropped
+   (`§GANTT_STALE_CACHE`), it takes the cold path, `injectGantt` runs, `_cap.guidTask` reads
+   `task_elements` and re-buckets those 28 walls correctly. Then the persisted ops in the shipped
+   `.db` are simply never what the browser plays, and the defect is bake-path-only.
+2. The browser replays the same ops, and the slab draws for the §88.7c(2) reason — a stale
+   `setVisibleAt(true)` surviving the `_incrOK` skip — exactly as it does on `main` in the bake.
+   Then "it is ok" is the same accident, not a difference.
+
+**The decisive check costs one browser open**, and is not a 4D change: open Time Machine on
+Hospital, then grep the console for `§GANTT_SOURCE` / `§TM_OPS_CHECK` / `§GANTT_CACHE_HIT`. A
+`§GANTT_SOURCE` line means (1); `§TM_OPS_CHECK place=63415` with no `§GANTT_SOURCE` means (2).
+**Nothing in this section should be treated as describing the browser until that grep exists.**
