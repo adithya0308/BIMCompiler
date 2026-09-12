@@ -5403,3 +5403,45 @@ Same for `§CPE_BUILDUP_ARM_GATE timeout … refusing to arm a cursor that canno
 the bake proceeds. A run that was ASKED for `--buildup` and silently delivered a film without one
 should set `S.fatal` and exit non-zero, exactly as R7/§80.1 require elsewhere — "exit code alone is
 not evidence" cuts both ways, and here the exit code is actively misleading.
+
+**88.11 NO — §88.9's CAUSE STANDS, and it is now provable WITHOUT `task_elements`.**
+*(User: "Does this mean we mistaken our earlier ground slab bug cause?")* §88.10d raised a fair
+doubt: if `task_elements` is the stale side on the storey axis, why trust it on the phase axis? The
+answer is that we no longer need to. Comparing each op's OWN `phase` field against its OWN `_task`
+bucket (normalised), across all 63,415:
+
+```
+ops whose own phase contradicts their own _task bucket:  39 / 63,415
+   28   phase='Substructure'   vs  _task='Architecture_Envelope'   ← §88.9's foundation walls
+   11   phase='Architecture'   vs  _task='Superstructure'
+```
+
+**39 self-contradictory ops in the whole schedule, and 28 of them are the Level 1 foundation walls.**
+The op says Substructure in `phase`, Substructure in `_cell` (`L0·T1·L0`, tier 1), and
+Architecture Envelope in `_task`. That is internal inconsistency, not a disagreement between two
+sources — so no judgement about which table is authoritative is required, and §88.10d's polarity
+finding does not touch it. The 13,546 storey shifts remain an op-vs-`task_elements` disagreement
+where the op is the better witness; the 28 phase shifts are the op contradicting itself.
+
+**Nothing in §88.6-§88.9 changes.** The chain is unaltered: 28 walls mis-bucketed → 20 of them
+in-extent carriers finishing 13.47 h after the ground slab → `_buildXraySupportCache` stages the slab
+→ §XRAY_STAGING_REMOVED hides it → visible or not depending on batching (§88.7). §88.10 explains why
+the misassignment is immortal, not who caused it.
+
+**88.12 SCOPE RULING (user, 2026-09-12): "Don't touch browser base ops as it needs deeper history.
+You can only fix silent bake side."** So `injectGantt`, `_activateAsync`, `_kernelOpsSchedStale`,
+`_GANTT_CACHE_VERSION` and the persisted `kernel_ops` generation are OUT OF SCOPE — the 39
+contradictory ops stay as they are until that history is understood. The bake side may only refuse,
+and report. Two changes, both in `cli_silent_bake.js`, neither touching the viewer:
+
+- **§CLI_BAKE_FAIL_NO_TIMELINE (the fix §88.10e asked for).** A run that resolved buildup ON and
+  then got `§CLI_BAKE_TM_PRIME FAILED`/`no-hook`, or that sees `§CPE_BUILDUP_ARM_GATE timeout` in the
+  frame stream, must abort non-zero instead of delivering a film with the buildup silently dropped.
+  Today it logs one ⚠ and exits 0 because `S.fatal` is only set by `§MAXQ_FAIL` / `--max-frame-ms`.
+- **§CLI_BAKE_SCHED_COHERENCE (read-only).** One line, after load, counting what the bake is about
+  to replay: total ops, ops whose own `phase` contradicts their own `_task`, and ops whose `_task`
+  has no matching `task_elements` row. Pure SELECTs against `APP.db` — **it repairs nothing and
+  writes nothing**. Its whole job is that §88's 28 walls would have had a number in the log from the
+  first bake instead of costing four sessions. Non-zero is reported, never fatal: on Hospital the
+  honest counts are 39 and 13,574, and a bake must not start refusing films over a pre-existing
+  condition it has been shipping for weeks.
