@@ -5413,7 +5413,30 @@ should establish, because it changes the whole shape of the fix:
    `setVisibleAt(true)` surviving the `_incrOK` skip — exactly as it does on `main` in the bake.
    Then "it is ok" is the same accident, not a difference.
 
-**The decisive check costs one browser open**, and is not a 4D change: open Time Machine on
-Hospital, then grep the console for `§GANTT_SOURCE` / `§TM_OPS_CHECK` / `§GANTT_CACHE_HIT`. A
-`§GANTT_SOURCE` line means (1); `§TM_OPS_CHECK place=63415` with no `§GANTT_SOURCE` means (2).
-**Nothing in this section should be treated as describing the browser until that grep exists.**
+**⚠ AND THE CHECK IS NOT "GO LOOK IN THE BROWSER" EITHER.** *(User: "It should not be tied to the
+browser. There should be separation of concern. The code or script itself can be run in the same way
+either from browser or from silent command line mode.")* Resolving (1) vs (2) by grepping a browser
+console — which is what this section said a moment ago — accepts the premise that the host decides
+the timeline. **That premise is the defect.**
+
+`_activateAsync` branches on state that belongs to the HOST, not to the model:
+- `cacheGet('gantt')` is IndexedDB. A browser that has opened the Time Machine before has it; a bake
+  with a fresh `--profile` never does. Same `.db`, same tasks, different path taken. *(Read from the
+  code, not measured — the bake side is measured: fresh profile, `§GANTT_CACHE_HIT` absent.)*
+- The persisted `kernel_ops` rows in the shipped `.db` are adopted or not depending on that.
+
+So whether `injectGantt` re-derives — and therefore whether those 28 walls get re-bucketed through
+`_cap.guidTask` — is decided by browser storage history. That is the separation-of-concern break, and
+it is a bigger finding than the 28 walls: **two hosts can play the same building on two different
+timelines and both think they are right.**
+
+**What to require instead.** Timeline derivation must be a PURE FUNCTION OF THE DB — `tasks`,
+`task_elements`, `elements_meta`, `element_transforms` — and must produce byte-identical ops whether
+it is driven from a browser or from `cli_silent_bake.js`. Host-owned state (IndexedDB, a profile
+directory, a prior session) may only ever be a CACHE of that function, never an input to it: a cache
+whose absence changes the answer is not a cache. The gate that would hold this is host-independent by
+construction — run the shipped derivation against the DB in node, twice, from cold and from warm, and
+assert the op set is identical. `viewer/tests/witness_schedule_coherence.js` already reads what is
+persisted; the missing half is asserting what SHOULD be derived, and neither half needs a browser.
+
+**Until that gate exists, nothing in this section describes anything but a bake.**
