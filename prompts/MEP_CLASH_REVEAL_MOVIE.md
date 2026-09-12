@@ -4988,6 +4988,37 @@ the reveal rather than clearing once construction completes.
 nothing here observes a rendered frame — the whole chain above is read off logs and the DB. Two
 numbers being equal is not proof one hid the other. **Establish causation before changing code.**
 
+**88.4b WHERE `groundZ` COMES FROM — and why this is NOT a regression.**
+*(User: "This is likely TimeMachine stuff, so have the agent inspect what just disturbed it.")*
+The chain is `tools.js §GROUND_Y` → `A.groundIfcZ` → `cinema_maxq.js` → `tmGroundSchedule(z)`
+(`time_machine.js`) → the plane. The derivation is **`§GROUND_Y_LOWEST_GF`, dated 2026-07-17**:
+
+```sql
+SELECT t.center_z - t.bbox_z/2 AS bottom, ...        -- the slab's UNDERSIDE
+WHERE m.ifc_class='IfcSlab' AND t.bbox_z < 1.0
+  AND m.storey IN ('Ground Floor', ..., 'Level 1', ...)   -- Hospital's storey IS "Level 1"
+ORDER BY area DESC LIMIT 5                            -- then take the lowest center_z of those 5
+```
+
+So `groundIfcZ` is **the ground-floor slab's own bottom face, by construction** — the plane is
+placed at the underside of the very slab it then appears to hide. That behaviour dates from
+2026-07-17 and is **not** something recently disturbed. Do not go looking for a regression in
+`§GROUND_Y`; if the plane is the culprit, the bug is the *rule*, and the fix is an offset below the
+slab rather than flush with it.
+
+**88.4c ⚠ THE RECENT CHANGE IS ELSEWHERE — `§STOREY_REVEAL_XRAY`, and it fits the REVEAL symptom.**
+`ed09eab6` (#1696, **2026-09-07** — "the film's ending: disc-arrival clash sets, storey reveal under
+X-ray") introduced `cpe_storey_reveal.js` and wired it into `cinema_maxq.js`. It **reuses
+`A.toggleXray`** to put the rest of the building in X-ray while the lit storey is forced solid
+(`cl.transparent = false; cl.opacity = 1`).
+
+The user saw "all ground" **on the return trip for the reveal** — precisely when X-ray is engaged.
+If the building goes transparent while the ground plane stays at `groundOpacity=1.000` (which the
+log shows it does, on all 79 samples), you would see ground straight through the floor. That is a
+DIFFERENT mechanism from 88.4's coplanarity and a far better fit for the recent-change question:
+88.4 explains the opening seconds, 88.4c explains the reveal. **They may both be true, and the fix
+for one will not fix the other.**
+
 **Trace it in this order, each step falsifiable on its own:**
 1. **Confirm the symptom in a frame, not in prose.** Pull a frame from the recovered film at the
    reveal and at ~5 s and confirm what is actually drawn where the floor should be. The frames are
@@ -4999,8 +5030,19 @@ numbers being equal is not proof one hid the other. **Establish causation before
    `groundZ` is derived — a plane placed AT the first above-ground element is always coplanar with
    it. If the floor is STILL absent, the ground plane is exonerated and 88.3's instrumentation is
    the only way forward.
-3. **Only then change anything.** Per the Log Mandate and §80.1: grep a real log and quote the
+3. **Test the reveal separately from the opening.** They are different mechanisms (88.4 vs 88.4c)
+   and a frame from each is needed. For the reveal, check whether `§STOREY_REVEAL_XRAY` leaves the
+   ground plane opaque while the building is transparent — `git show ed09eab6 -- viewer/cpe_storey_reveal.js`
+   and the `cinema_maxq.js` wiring are the diff to read.
+4. **Only then change anything.** Per the Log Mandate and §80.1: grep a real log and quote the
    number that moved. "Code changed" is not "behaviour changed".
+
+**Other 4D commits worth a glance if 88.4 and 88.4c both fail:** `fcd4720c` (#1660, 2026-09-04)
+§DLOD_TM_OWNERSHIP — dlod.js standing down while the Time Machine owns instance matrices, whose own
+subject was **missing glass/furniture in the Hospital CLI silent bake**, i.e. the same symptom class
+on the same building and the same code path; and `f289da6b` (#1641, 2026-09-04) §STOREY_DATUM_FRAME
+— the declared storey ladder having to be in the geometry's vertical frame, which is the other
+place an elevation can shift underneath all of this.
 
 **RULED OUT by 88.1-88.3 and the reveal observation, do not re-test:** ordering within the task
 (the reveal is post-top-out and still shows ground); missing or empty geometry (all 35 slabs carry
