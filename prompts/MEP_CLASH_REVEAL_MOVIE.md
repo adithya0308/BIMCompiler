@@ -4915,381 +4915,70 @@ report cannot go below it; §81.3's twice-observed load-time kill sits on exactl
 makes that cost the WHOLE cost instead of 1.7% of it, which is what makes it worth attacking — but
 §81.3's own advice stands: measure peak RSS across the load phase before changing anything.
 
-### 88. ASSIGNED (2026-09-12) — §BUILDUP_GROUND_SLAB: the Hospital ground-floor slab is not built in
-### the opening seconds. OWNER: a NEW session. Everything below is evidence, not a diagnosis.
-**Origin: the user, eyeballing the recovered Hospital v86 film** — *"indeed it has gone missing
-during initial seconds, not built.. i think was another slight session interrupt which is
-concerning."* Handed over deliberately so it is picked up fresh rather than guessed at here.
+### 88. RESOLVED (2026-09-13) — §BUILDUP_GROUND_SLAB: Hospital's 8,899 m² ground floor read as
+### bare earth for a whole film. Two independent defects, one regression and one latent.
+**Origin: the user, on the recovered Hospital v86 film** — *"indeed it has gone missing during initial
+seconds, not built."* Four sessions chased the ghost-ground plane. It was neither the plane nor the
+renderer.
 
-**88.1 RULED OUT — do not re-investigate these.**
-- **The data is intact, and the bake did not touch it.** `IfcSlab = 35` identically in
-  `Hospital_extracted.db` (265 MB, closest to the IFC import), `Hospital_meta.db`,
-  `HospitalAjaibPath.db` and `Hospital_silent.db` — same per-storey split, same z-range
-  164.93..203.22 in every one. Full trace in bim-ootb `prompts/STRUCTURAL_SANITY.md` **T10**.
-- **The slab itself is present and normal-sized.** Level 1 carries an **8,899 m²**
-  `Floor:Concrete-150 mm slab on 300mm base` at x −5..94, y 38..128, z 165.59 — in line with L2
-  8,963 · L3 9,192 · L4 8,270 · L5 8,343. 553 `IfcFooting` sit under it at z 161.51..165.06.
-- **The schedule is coherent and complete.** `§CPE_BUILDUP_SOURCE source=captured leafTasks=41
-  summarySkipped=1 covered=63415/63415 pct=100%`. 42 tasks, 63,415 `task_elements`. The 8,899 m²
-  slab belongs to **`Superstructure — Level 1` (2026-01-12 .. 2026-01-25)**, the third task in the
-  schedule after `Project` and `Substructure — Level 1`.
-- **No interrupt is visible in the opening.** The v86 log has no `§MAXQ_FAIL`, no
-  `§CPE_BUILDUP_SKIP`, no `PAGEERROR`, no `§MAXQ_GL_LOST` anywhere near the first frames. The only
-  SIGTERM in that run arrived at **frame 4698/4699**, i.e. at the very end, during the final write
-  (see §CLI_BAKE_POINT_OF_NO_RETURN, fixed separately). The user's interrupt hypothesis is
-  reasonable but is **not supported by this log** — check it against a fresh bake before assuming.
-
-**88.2 THE ARITHMETIC SAYS IT SHOULD BE UP BY ~2 SECONDS, WHICH IS WHY THIS NEEDS LOOKING AT.**
-Pacing is `§CPE_BUILDUP_PACING mode=work ops=63415` — `t` is share of ELEMENTS placed, not days.
-`Substructure — Level 1` is 583 elements and `Superstructure — Level 1` is 747, so the slab's own
-task completes at **1,330 / 63,415 = 2.1%** of the work. Measured progression:
-
+**88.1 THE REGRESSION — `7af3fd64`, 2026-09-11 15:29:10 +0800, `viewer/streaming.js`, two lines.**
+§BATCH_BUCKET_CLASS_PAINT appended `+ '|' + (el.ifcClass || '')` to the BatchedMesh bucket key (and
+the matching consolidate key). An ancestor of `8e53455b`, the commit v86 was baked from.
+**Proved against its own parent** — `42340b46` vs `7af3fd64`, same DB, same `--clip 0:0.02`, same
+1920×1080 frame 38, Day 13:
 ```
-frame=0/4699    t=0.000  placed=1/63415      groundOpacity=0.220
-frame=60/4699   t=0.035  placed=1575/63415   groundOpacity=1.000     <- past 1,330 by 2.5 s
-frame=120/4699  t=0.071  placed=3142/63415
+42340b46 (parent)   frame=23 placedOps=1008 visible=TRUE   frame=24 placedOps=1042 visible=TRUE
+7af3fd64 (+1 line)  frame=23 placedOps=1008 visible=FALSE  frame=24 placedOps=1042 visible=FALSE
 ```
+Identical guid, `placedOps`, `groundY`, `host=BM`. Only `visible` flips; the frames agree — concrete
+deck in the parent, bare earth in the child.
 
-So the ground slab should be standing within roughly the first **two to three seconds**, and
-`placed=1` at frame 0 is the buildup legitimately starting from an empty site — that part is by
-design and is NOT the bug.
+**88.2 THE MECHANISM — the line did not break anything, it REMOVED AN ACCIDENT.**
+`§XRAY_STAGING_REMOVED` had been holding that slab back on **every one of the 18 Hospital bakes on
+record** (`§GANTT_SOURCE` appears in none of them), because its schedule said 20 in-extent foundation
+walls finish 13.47 h AFTER the slab they carry. With the slab sharing a 13-slot BatchedMesh
+(`id=2990 slot=3`), a stale `setVisibleAt(true)` survived the `_incrOK` delta skip and it drew anyway.
+The class term isolated it into a 1-slot batch (`id=3304 n=1`), the gate applied in full, and the
+floor vanished. The staging map is byte-identical either way
+(`solidifyTsForGuid=1789798254510`) — only whether the verdict reached a pixel changed.
 
-**88.3 ⚠ THE BLOCKER, AND THE FIRST THING TO FIX — the log cannot answer the question.**
-`§CPE_BUILDUP` reports **only an aggregate**: `placed=N/63415`. Across the entire 12.9 MB v86 log
-there are **zero** lines naming a placed element — `grep -c 'placed.*guid|§CPE_BUILDUP_PLACED'`
-returns 0. So it is currently impossible to tell from a bake log whether the Level 1 slab was
-placed at frame 50, at frame 4000, or never. **Add per-element placement evidence before
-theorising** — at minimum a `§CPE_BUILDUP_PLACED` line for the first N placements per task, or a
-targeted "when did guid X appear" probe. This is the same lesson §RULE_FILM already learned and
-bim-ootb T8.12 already applied: a count is not evidence, and a rule or a beat that cannot show its
-own working cannot be debugged from its log.
+**88.3 BOTH ARE NOW FIXED, and the second fix retired the first.**
+- The schedule defect is `prompts/4D_SCHEDULE_PERFECTION.md` §SCHED_TASK_BUCKET_SPLIT_BRAIN —
+  28 Level 1 "Foundation" walls filed under the wrong task. **Fixed by §KERNEL_OPS_SCHED_AGREE
+  (#1727)**: Hospital re-derives, the walls land 11.8 days BEFORE the slab, `staged 544 → 498-501`,
+  the slab leaves the staging map entirely.
+- With the hold gone the 1-slot batch is harmless, so the class term was **restored** — the
+  foreign-class paint it fixed (~5,998 Hospital elements) stays fixed. The temporary revert is dead.
 
-**88.4 ⚠ PRIME SUSPECT — `§GHOST_GROUND`'s plane is COPLANAR with the ground-floor slab.**
-*(The user, on the same film: "even in the return trip for reveal it is when i first noticed it was
-all ground!" The reveal runs AFTER top-out, when construction is complete — so this is not a
-buildup-ordering fault at all. That observation eliminated two of the three original candidates and
-pointed at the one below.)*
+**88.4 REFUTED — do not re-open any of these.**
+| suspect | why it is dead |
+|---|---|
+| §GHOST_GROUND coplanar plane | the plane sits at the slab's UNDERSIDE (`z=165.36`), 0.45 m BELOW its top face. A downward raycast hits the slab at `y=-15.427` BEFORE the ground at `y=-15.877`. |
+| §STOREY_REVEAL_XRAY (#1696) | **0 lines** in the v86 log — §55.1 replaced it with §FACADE_ONLY_TINT. |
+| DLOD (#1660) | `§DLOD_DISABLE reason=time-machine` at +72.5 s, before frame 0. |
+| §BM_BOUNDS_CULL | the stored sphere IS 4.583 m short (`r=62.251` vs `66.834`) but `storedSphereInFrustum=true` at every pose sampled. |
+| Triplanar paint | `§TRIPLANAR_INIT class=IfcSlab tex=concrete_color_1k.jpg` — a slab that draws, draws as concrete. |
+| The bake "inventing a setting" | browser and CLI call the identical verbs and took the identical branch, measured in four headful-GPU runs. |
+| A ground-bearing exemption in the gate | **WRONG FIX.** The gate is correct: it refuses to draw an element whose support is unfinished. Exempting ground-bearing slabs teaches it to ignore the exact case it exists for. |
 
-```
-§GHOST_GROUND_SCHEDULE groundZ=165.36  aboveOps=62682 belowOps=733
-Level 1 slab        base z = 165.36    top z = 165.81   (0.45 m thick, 8,899 m²)
-§CPE_BUILDUP frame=0   groundOpacity=0.220
-§CPE_BUILDUP frame=60  groundOpacity=1.000      <- and 1.000 on all 79 later samples
-```
+**88.5 STILL OPEN — the `_incrOK` stale-visibility hole.** A slot's `setVisibleAt` can survive a tick
+where the delta path skipped its BatchedMesh. That stale `true` is what hid a real 13.47 h schedule
+inversion for however long it was in the data. A gate that only applies when the batch happens to be
+touched is not a gate. Note the direction: fixing this WITHOUT the schedule fix makes more floors
+vanish, not fewer.
 
-**`groundZ` equals the slab's underside exactly.** The ground plane is derived as the first
-above-ground element's base elevation, and on Hospital that element IS the ground-floor slab — so
-the plane lands flush with it. From 2.5 s onward the plane is fully opaque and stays that way for
-the rest of the film, including the closing reveal. A viewer looking at where the ground floor
-should be sees the ground plane: exactly the reported symptom, and it explains why it persists to
-the reveal rather than clearing once construction completes.
+**88.6 TECHNIQUES THIS COST US, WORTH KEEPING.**
+- **`--clip 0:0.02`** bakes the first 2 % of the SAME film — real pacing, real camera path — in ~2 min
+  instead of ~98. Every A/B above used it.
+- **§CPE_BUILDUP_PLACED** (#1723) names a guid and the frame its state changed, in all three render
+  branches. Measured on Hospital: **0 single meshes carry a guid** — 38,169 BatchedMesh slots and
+  25,013 InstancedMesh slots — so any "is it drawn?" question must be asked of the batched branches.
+- **`§CLI_BAKE_FAIL_NO_TIMELINE`** (#1725/#1726): a bake that resolved buildup ON and armed no
+  timeline now aborts non-zero instead of delivering a silent, exit-0 film without it.
+- **Never re-type a shipped predicate in a test.** A re-typed carrier predicate (wrong `seq` map,
+  missing `SEQUENCE_NAME_OVERRIDES`) produced a confidently wrong "not staged" answer that cost a
+  whole round. Slice it from source or call it.
 
-**⚠ THIS IS A SUSPECT, NOT A CAUSE.** The coincidence is exact and the mechanism is plausible, but
-nothing here observes a rendered frame — the whole chain above is read off logs and the DB. Two
-numbers being equal is not proof one hid the other. **Establish causation before changing code.**
-
-**88.4b WHERE `groundZ` COMES FROM — and why this is NOT a regression.**
-*(User: "This is likely TimeMachine stuff, so have the agent inspect what just disturbed it.")*
-The chain is `tools.js §GROUND_Y` → `A.groundIfcZ` → `cinema_maxq.js` → `tmGroundSchedule(z)`
-(`time_machine.js`) → the plane. The derivation is **`§GROUND_Y_LOWEST_GF`, dated 2026-07-17**:
-
-```sql
-SELECT t.center_z - t.bbox_z/2 AS bottom, ...        -- the slab's UNDERSIDE
-WHERE m.ifc_class='IfcSlab' AND t.bbox_z < 1.0
-  AND m.storey IN ('Ground Floor', ..., 'Level 1', ...)   -- Hospital's storey IS "Level 1"
-ORDER BY area DESC LIMIT 5                            -- then take the lowest center_z of those 5
-```
-
-So `groundIfcZ` is **the ground-floor slab's own bottom face, by construction** — the plane is
-placed at the underside of the very slab it then appears to hide. That behaviour dates from
-2026-07-17 and is **not** something recently disturbed. Do not go looking for a regression in
-`§GROUND_Y`; if the plane is the culprit, the bug is the *rule*, and the fix is an offset below the
-slab rather than flush with it.
-
-**88.4c ⚠ THE RECENT CHANGE IS ELSEWHERE — `§STOREY_REVEAL_XRAY`, and it fits the REVEAL symptom.**
-`ed09eab6` (#1696, **2026-09-07** — "the film's ending: disc-arrival clash sets, storey reveal under
-X-ray") introduced `cpe_storey_reveal.js` and wired it into `cinema_maxq.js`. It **reuses
-`A.toggleXray`** to put the rest of the building in X-ray while the lit storey is forced solid
-(`cl.transparent = false; cl.opacity = 1`).
-
-The user saw "all ground" **on the return trip for the reveal** — precisely when X-ray is engaged.
-If the building goes transparent while the ground plane stays at `groundOpacity=1.000` (which the
-log shows it does, on all 79 samples), you would see ground straight through the floor. That is a
-DIFFERENT mechanism from 88.4's coplanarity and a far better fit for the recent-change question:
-88.4 explains the opening seconds, 88.4c explains the reveal. **They may both be true, and the fix
-for one will not fix the other.**
-
-**Trace it in this order, each step falsifiable on its own:**
-1. **Confirm the symptom in a frame, not in prose.** Pull a frame from the recovered film at the
-   reveal and at ~5 s and confirm what is actually drawn where the floor should be. The frames are
-   still on disk as WebP in `/tmp/silent-bake-profile-8544/.../indexeddb.blob` (4,699 of them,
-   contiguous hex-ordered ids 0x2..0x125c, verified frame-ordered by PSNR) — no re-bake needed to
-   look.
-2. **Isolate the plane.** Render one frame with the ground plane suppressed, or `groundZ` dropped
-   below 165.36. If the 8,899 m² floor appears, causation is established and the fix is in how
-   `groundZ` is derived — a plane placed AT the first above-ground element is always coplanar with
-   it. If the floor is STILL absent, the ground plane is exonerated and 88.3's instrumentation is
-   the only way forward.
-3. **Test the reveal separately from the opening.** They are different mechanisms (88.4 vs 88.4c)
-   and a frame from each is needed. For the reveal, check whether `§STOREY_REVEAL_XRAY` leaves the
-   ground plane opaque while the building is transparent — `git show ed09eab6 -- viewer/cpe_storey_reveal.js`
-   and the `cinema_maxq.js` wiring are the diff to read.
-4. **Only then change anything.** Per the Log Mandate and §80.1: grep a real log and quote the
-   number that moved. "Code changed" is not "behaviour changed".
-
-**Other 4D commits worth a glance if 88.4 and 88.4c both fail:** `fcd4720c` (#1660, 2026-09-04)
-§DLOD_TM_OWNERSHIP — dlod.js standing down while the Time Machine owns instance matrices, whose own
-subject was **missing glass/furniture in the Hospital CLI silent bake**, i.e. the same symptom class
-on the same building and the same code path; and `f289da6b` (#1641, 2026-09-04) §STOREY_DATUM_FRAME
-— the declared storey ladder having to be in the geometry's vertical frame, which is the other
-place an elevation can shift underneath all of this.
-
-**RULED OUT by 88.1-88.3 and the reveal observation, do not re-test:** ordering within the task
-(the reveal is post-top-out and still shows ground); missing or empty geometry (all 35 slabs carry
-an `element_instances` row, the big slab's mesh is 11,304 vertex bytes / 3,768 face bytes, and
-there are **0 dangling geometry hashes** in the DB); and the data or the bake (88.1).
-
-**88.5 WHAT "DONE" LOOKS LIKE.** A `§CPE_BUILDUP_PLACED`-style line naming the Level 1 slab guid
-with the frame it appeared on, from a real bake — and the opening seconds showing a floor. Per
-§80.1 and the Log Mandate: grep a real log and quote the number. Exit code is not evidence, and
-neither is a frame that looks right.
-
-**88.6 SYMPTOM CONFIRMED IN REAL FRAMES (2026-09-12). Both §88.4 and §88.4c are now DEAD.**
-Step 1 of §88.4's trace is done. The recovered film is frame-for-frame the bake — `ffprobe` reports
-`nb_frames=4699 r_frame_rate=24/1 duration=195.79s`, the same 4,699 the log counts — so frames were
-read straight from `~/Downloads/Hospital_FULL_1080p_v86_RECOVERED.mp4`; the IndexedDB WebPs were not
-needed. Frames pulled with `ffmpeg -vf select=eq(n\,N)` and read at 1:1 crop:
-
-| frame | film sec | what is actually drawn |
-|---|---|---|
-| 60 | 2.5 s (Day 13, `placed=1575/63415`) | Level 1 walls and columns stand **directly on bare earth**; the rocky ground texture runs continuously under and between them, inside the footprint |
-| 1800 | 75.0 s (Day 310, camera at Level 4) | a normal pale **concrete floor** — upper storeys are fine |
-| 2100 | 87.5 s (Day 310, HUD `Storey: Level 1`) | interior floor is **bare earth with sun shadows**, a wall plinth sitting on it, and a separate grey concrete slab edge visible a step ABOVE the earth |
-| 2400 | 100.0 s (Day 310, `Level 1`) | bare earth again |
-
-So it is **Level 1 specifically**, it is there in the opening AND at full build, and the visible
-surface is the ghost plane's `earth_1k` map. The user's "not built in the initial seconds" and
-"all ground on the return trip" are the same defect seen twice, not two.
-
-**88.6a §88.4 (coplanar ghost plane) is REFUTED — by 0.45 m, arithmetically.**
-The plane is at the slab's UNDERSIDE, not its top: `§GROUND_Y src=gf-storey-slab(Level 1) z=165.36
-y=-15.88`, and the slab's own mesh blob (`component_geometries` hash `c103211caf542f59`, 942 verts)
-is local z **−0.225..+0.225** about `center_z=165.586` → world **165.361..165.811**. The plane is a
-flat `PlaneGeometry(50000, 50000)` (`scene.js` §GROUND_METALLIC_REVERT) with no displacement, no
-`renderOrder`, and no `depthTest`/`depthWrite` override anywhere. A flat plane 0.45 m BELOW a
-surface cannot occlude it from a camera above. Two numbers being equal was indeed not proof — and
-here they are not even the same two numbers. **Do not re-open the coplanarity theory; if the plane
-is ever moved it is for the §88.6d reason, not this one.**
-
-**88.6b §88.4c (§STOREY_REVEAL_XRAY) is REFUTED — that code path does not run in this build.**
-The v86 log has **0** `§STOREY_REVEAL_XRAY` lines, and that is BY DESIGN: §55.1/§55.2 replaced it
-with §FACADE_ONLY_TINT ("Verified: 0 §STOREY_REVEAL_XRAY lines"). What actually ran in the closing
-is `§CPE_REVEAL_ROUND on pulloutSec=1.5 flybackSec=19.8 round2Sec=56.0 tailSec=10.0
-discs=[PLB,FP,ELEC,MEP] totalSec=87.4` — i.e. from film sec 108.4 (frame 2602) the DISCIPLINE
-reveal isolates one discipline at a time, which legitimately hides most of the model (frames 2650
-and 2900 show sky and ground through the structure with only flagged clash steel + MEP drawn).
-**The reveal is therefore NOT independent evidence of this bug** — the opening (frame 60) and the
-Day-310 Level 1 interiors (frames 2100/2400, where nothing is hidden) are what carry it.
-
-**88.6c ALSO REFUTED, do not re-test:**
-- **X-ray staging.** §Z_STACK_XRAY_STAGING's predicate (`_buildXraySupportCache`) recomputed offline
-  against `Hospital_silent.db`: the L1 slab has 81 carriers (73 in-extent, 8 enveloping),
-  `maxCarrierEnd=1789285929202` vs its own `end=1789749776520` → carrier finishes FIRST, so it is
-  **not** one of the `staged=544`.
-- **DLOD.** `§DLOD_DISABLE reason=time-machine` / `§DLOD_TM_GATE elements=63182 threshold=50000
-  large=true` both at +72.5 s — before frame 0. #1660 is not in this path.
-- **Triplanar.** `§TRIPLANAR_INIT class=IfcSlab tex=textures/materials/concrete_color_1k.jpg` — a
-  slab that draws, draws as concrete. It is not wearing the ground texture.
-- **The schedule.** The slab has exactly ONE `ELEMENT_PLACE` op (`kernel_ops` id 646, phase
-  `Superstructure`, storey `Level 1`), and by `end_ts` it ranks **805 / 63,415** — 1.27 % of the
-  work, i.e. **~frame 31 (1.3 s)**. The film's own beat planner agrees independently:
-  `§SLAB_BEAT_POOL 1.07s Level 1 8,899m2 z=165.59`. It is scheduled; it does not appear.
-
-**88.6d THE QUESTION IS NOW NARROW, AND IT IS EXACTLY §88.3'S BLOCKER.** At a cursor past
-`end_ts=1789749776520`, `applyCursor`'s traverse marks `placed[guid]=true` and then walks the SCENE
-looking for meshes whose `userData.guid` matches. Three states are indistinguishable in every log
-this codebase writes today:
-1. **no mesh** — nothing in the scene carries that guid (streaming never built it, or it lives
-   inside a BatchedMesh/InstancedMesh the traverse does not reach by guid);
-2. **mesh present, left hidden** — found, but `visible` stays false;
-3. **mesh present and visible** — drawn, and something else is in front of it.
-`§CPE_BUILDUP placed=N/63415` counts OPS, never meshes, so it reads identically in all three.
-
-**88.6e SPEC — `§CPE_BUILDUP_PLACED`, the §88.3 fix.** In `time_machine.js`'s single unified
-traverse (the one that already sets visibility), maintain a small WATCH SET of guids and emit ONE
-line per guid per STATE CHANGE — never per frame, so a 4,699-frame bake adds a handful of lines:
-```
-§CPE_BUILDUP_PLACED frame=31 guid=0e8pm26Tv5vPrj6zU55MOH cls=IfcSlab storey="Level 1"
-  op=placed mesh=found visible=true y=-15.43 host=Mesh — first frame this guid is drawn
-§CPE_BUILDUP_PLACED frame=31 guid=… op=placed mesh=MISSING visible=false — scheduled, no mesh carries this guid
-```
-- **Watch set**, in order: `?watch=<guid,guid>` on the viewer URL if present; else the largest slab
-  per storey (the §SLAB_BEAT pool already computes these), capped at 16.
-- **Fields**: `frame`, `guid`, `cls`, `storey`, `op` (`pending|frontier|placed`), `mesh`
-  (`MISSING|found`), `visible`, world `y`, `host` (`Mesh|IM|BM`).
-- **Cost**: one `Object.create(null)` lookup per traversed mesh against a ≤16-key set. Nothing else
-  per frame.
-- **Summary at top-out**: `§CPE_BUILDUP_PLACED_SUMMARY watched=N drawn=M neverDrawn=[guid,…]`.
-This is the §RULE_FILM / bim-ootb T8.12 lesson applied: a count is not evidence.
-
-**88.6f THE DECISIVE RUN — cheaper than a bake.** `cli_silent_bake.js` already takes
-`--tap file.js` (a page script installed at document start, whose `window.__maxqTapReport()` is
-logged as `§CLI_BAKE_TAP` and written to `<out>_tap.json`). A tap that, once the building is loaded,
-sets the cursor to the slab's `end_ts` and reports which of §88.6d's three states holds answers this
-in one short run — the 71.3 s load dominates, not the film. Run it BEFORE changing any render code;
-per §80.1, grep the log and quote the number that moved.
-
-**88.7 ROOT CAUSE, A/B-PROVEN (2026-09-12). It is NOT on main, and it is NOT a Time Machine fix.**
-*(User, mid-trace: "it must been broken as a time machine fix recently?" — measured answer: no. The
-Time Machine schedules and reveals this slab correctly in every tree tested. What differs is which
-BatchedMesh bucket it lands in.)*
-
-**88.7a THE REPRODUCTION.** `cli_silent_bake.js --clip 0:0.02` bakes the first 2 % of the SAME film
-(59 frames, real pacing, real camera path) in ~2 min instead of 98. Baked at 1920×1080 from two
-trees, same DB, same `--clip`, frame 38 of each (Day 13, identical pose):
-
-| tree | commit | frame 38 | `§CPE_BUILDUP placed=` @58 |
-|---|---|---|---|
-| `main` | 5c0c8669 | **concrete Level 1 deck under the walls** | 2507/63415 |
-| `feat/rule-findings-film` | 8e53455b (the v86 tree) | **bare earth — the §88 symptom, exactly** | 2507/63415 |
-
-Identical schedule, identical `§XRAY_EDGES staged=544/63415`, identical `§GHOST_GROUND_SCHEDULE
-groundZ=165.36`. So §88 was never a main defect — the v86 film was baked from a branch.
-
-**88.7b THE ONE LINE.** `viewer/streaming.js` on that branch carries **§BATCH_BUCKET_CLASS_PAINT**
-(unmerged, not spec'd anywhere in bim-compiler), appending `+ '|' + (el.ifcClass || '')` to the
-BatchedMesh/merge bucket key. Reverting **only that term** (both the batch key ~L2210 and the
-consolidate key ~L2849, nothing else) and re-baking the same clip:
-
-```
-§BUILDUP_DRAWN frame=19 … visible=false
-§BUILDUP_DRAWN frame=20 … visible=true          <- the floor comes back
-§BUILDUP_DRAWN_SUMMARY … frames=59 framesDrawn=40
-```
-Unreverted: `visible=false` for the whole window. That is the A/B.
-
-**88.7b-bis PROVEN BY ADJACENT COMMITS (2026-09-12).** §88.7b's hand-revert established the line;
-this pins the date with no other variable. Two bakes, `7af3fd64` against its own parent `42340b46`,
-same DB, same `--clip 0:0.02`, same 1920x1080 frame 38 (Day 13):
-
-```
-42340b46 (parent)         frame=23 placedOps=1008 visible=TRUE   frame=24 placedOps=1042 visible=TRUE
-7af3fd64 (+1 line)        frame=23 placedOps=1008 visible=FALSE  frame=24 placedOps=1042 visible=FALSE
-```
-Identical guid, `placedOps`, `groundY`, `host=BM`. **Only `visible` flips**, and the rendered frames
-agree: concrete deck in the parent, bare earth in the child.
-
-**`7af3fd64` — 2026-09-11 15:29:10 +0800**, `fix(viewer): §BATCH_BUCKET_CLASS_PAINT — put ifc_class in
-the batch bucket key that decides the material`, `viewer/streaming.js`, +17/-2. It IS an ancestor of
-`8e53455b`, the commit the v86 film was baked from, so it was in the film that showed the symptom.
-
-**Read this together with §88.9-§88.11 and do not conflate them.** The SCHEDULE condition (28
-mis-bucketed foundation walls → the slab staged 13.47 h) is OLD: every one of the 18 Hospital bakes on
-record adopted the same frozen ops and staged the same slab, and `§GANTT_SOURCE` appears in NONE of
-them. What changed yesterday is only whether that standing verdict reaches a pixel. So there are two
-independent items, and only the first is a regression:
-1. **`7af3fd64`, yesterday, on `feat/rule-findings-film`** — makes the floor disappear. Not on main.
-2. **The frozen-ops schedule defect** — pre-existing, fleet-wide-latent, and the subject of the 4D
-   lane's fix. It was never a regression and never had a symptom until (1).
-
-**88.7c THE MECHANISM — two defects, and only the second one is the branch's.**
-Probed at clip frame 40, same cursor (`placedOps=1653`), `dlodEngaged=false` in both:
-
-```
-main      §WHY_HIDDEN claims=[{kind:BM, id:2990, slot:3, n:13, vis:true,  host:true }]
-branch    §WHY_HIDDEN claims=[{kind:BM, id:3304, slot:0, n:1,  vis:false, host:false}]
-both      §WHY_HIDDEN xray staged=544 n=544 solidifyTsForGuid=1789798254510
-```
-
-1. **THE LATENT DEFECT, PRESENT ON MAIN TOO.** `§XRAY_STAGING_REMOVED`'s gate
-   (`bStaged = !frontier && _tmXraySolidifyTs[g] !== undefined && cursorMs < _tmXraySolidifyTs[g]`)
-   holds the **ground-floor slab** until `1789798254510` — **13.5 hours after its own op ends**
-   (`end_ts=1789749776520`). A slab whose underside IS the ground datum has no carrier that can
-   legitimately finish after it; `_buildXraySupportCache` is finding one anyway. This is a real bug
-   in the support-carrier predicate and it is on main, unfixed.
-2. **WHY MAIN GETS AWAY WITH IT.** On main the slab shares a 13-slot BatchedMesh, and its slot still
-   reads `true` at a cursor where the gate says it should be false — the traverse's incremental
-   (`_incrOK`) path skips whole batched objects on ticks where nothing in them changed, so the
-   slot keeps a stale `true`. The floor is drawn by accident, not by decision.
-3. **WHAT THE BRANCH CHANGES.** With `ifcClass` in the key the slab becomes the ONLY member of its
-   own BatchedMesh (`n=1`). Every tick now touches that object, the gate applies in full,
-   `anyVis=false` sets `host.visible=false` — and the 8,899 m² floor is never drawn, in the opening
-   AND at Day 310. §BATCH_BUCKET_CLASS_PAINT did not create the bug; it removed the accident that
-   was hiding it. **It is a correct change sitting on top of an incorrect one.**
-
-**88.7d WHAT TO FIX, IN THIS ORDER — SUPERSEDED IN PART, read this before acting on it.**
-Item (1) below was written before §88.8/§88.9 found the real cause and is **WRONG**: the staging gate
-is not misfiring and a ground-bearing exemption would only paper over a real schedule inversion. The
-carrier is genuine and it genuinely finishes late. Kept, struck through, because the wrong idea is
-instructive — two sessions would have "fixed" §88 by teaching the gate to ignore exactly the case it
-exists to catch. Items (2) and (3) stand.
-1. ~~`_buildXraySupportCache` must not stage a ground-bearing slab.~~ **NO** — see
-   `prompts/4D_SCHEDULE_PERFECTION.md` §SCHED_TASK_BUCKET_SPLIT_BRAIN. The fix is the task-bucket
-   classifier, not the gate.
-2. **Only then** is §BATCH_BUCKET_CLASS_PAINT safe to merge. Merging it first ships the missing floor,
-   because it removes the accident (§88.7c(2)) that is currently drawing the slab anyway.
-3. **Separately**: the `_incrOK` skip leaving a stale `setVisibleAt` is a correctness hole of its own —
-   it is what kept a real schedule inversion off the screen for however long it has been in the data.
-   A gate that only applies when the batch happens to be touched is not a gate. Note the direction it
-   cuts: fixing the skip WITHOUT fixing the schedule also makes the floor disappear.
-
-**88.7e ALSO MEASURED, AND CLEARED — do not re-test.** `§BM_BOUNDS_CULL`'s stale sphere is real on
-this slab (stored `r=62.251` vs true `r=66.834`, a **4.583 m** shortfall) but
-`storedSphereInFrustum=true` at every pose sampled, so it never dropped it. A downward raycast
-through the slab centre at clip frame 6 returns `y=-15.427` (the slab top) BEFORE `y=-15.877`
-(`isGround=true`) — the slab is 0.45 m in front of the ghost plane and nothing occludes it.
-Census: Hospital has **0** single meshes carrying a guid — 38,169 BatchedMesh slots and 25,013
-InstancedMesh slots — so any §88-class question must be asked of the batched branches, never the
-single-mesh one.
-
-
-**88.8 THE CAUSE IS A TIMELINE DEFECT AND HAS BEEN MOVED — see
-`prompts/4D_SCHEDULE_PERFECTION.md` §SCHED_TASK_BUCKET_SPLIT_BRAIN.**
-*(User ruling, 2026-09-12: "Any timeline bug (which was clean prior) has to confine to the dedicated
-prompts/# governing it." This file owns the film; it does not own the schedule.)*
-In one line, so §88 is readable without the jump: **28 Level 1 "Foundation" walls carry
-`phase='Substructure'` and `_cell='L0·T1·L0'` while their `_task` says `Architecture_Envelope`** —
-a bucket that runs AFTER the slab they carry. 20 are in-extent carriers under it, finishing 13.47 h
-late, so `_buildXraySupportCache` stages the slab and §XRAY_STAGING_REMOVED correctly refuses to draw
-an unsupported floor. Whether a viewer SEES that refusal is §88.7's batching question, which is this
-file's business. Everything upstream of it — the misassignment, why `injectGantt` never re-derives
-it, and the fleet numbers — is in the 4D file.
-
-**88.10e IT DOES NOT HARD-FAIL WITH NO SCHEDULE, AND THAT IS A SEPARATE BUG.** Trace the no-timeline
-path: `injectGantt()` false → `§TIME_MACHINE no ops and no elements` → `activate` resolves false →
-`tmActivateForBake` returns false → the CLI logs
-```
-§CLI_BAKE_TM_PRIME FAILED …
-⚠ buildup will be skipped by the bake (no timeline)
-```
-…and **continues**. `S.fatal` is only ever set by `§MAXQ_FAIL` or a `--max-frame-ms` breach, and the
-process exits `aborted || !fileOk ? 1 : 0` — a film with no buildup is still a file, so **exit 0**.
-Same for `§CPE_BUILDUP_ARM_GATE timeout … refusing to arm a cursor that cannot move`: it warns and
-the bake proceeds. A run that was ASKED for `--buildup` and silently delivered a film without one
-should set `S.fatal` and exit non-zero, exactly as R7/§80.1 require elsewhere — "exit code alone is
-not evidence" cuts both ways, and here the exit code is actively misleading.
-
-**88.12 SCOPE RULING (user, 2026-09-12): "Don't touch browser base ops as it needs deeper history.
-You can only fix silent bake side."** So `injectGantt`, `_activateAsync`, `_kernelOpsSchedStale`,
-`_GANTT_CACHE_VERSION` and the persisted `kernel_ops` generation are OUT OF SCOPE — the 39
-contradictory ops stay as they are until that history is understood. The bake side may only refuse,
-and report. Two changes, both in `cli_silent_bake.js`, neither touching the viewer:
-
-- **§CLI_BAKE_FAIL_NO_TIMELINE (the fix §88.10e asked for).** A run that resolved buildup ON and
-  then got `§CLI_BAKE_TM_PRIME FAILED`/`no-hook`, or that sees `§CPE_BUILDUP_ARM_GATE timeout` in the
-  frame stream, must abort non-zero instead of delivering a film with the buildup silently dropped.
-  Today it logs one ⚠ and exits 0 because `S.fatal` is only set by `§MAXQ_FAIL` / `--max-frame-ms`.
-- **§CLI_BAKE_SCHED_COHERENCE — TRIED IN THE BAKE, THEN REMOVED.** *(User, same day: "AFAIK, bake
-  follows 4D timeline and not has extra script to it.")* Correct, and the first attempt broke it: a
-  page-evaluate SQL audit inside `cli_silent_bake.js`. The bake PLAYS the timeline; it is not the
-  place to grow a second opinion about it — and an audit living there would have had to RE-TYPE the
-  phase/task semantics, the exact "a re-typed predicate tests itself" trap §88.9 was itself caught
-  by. Reverted (47 lines out). The audit now ships as a node witness,
-  `viewer/tests/witness_schedule_coherence.js` (W-SCHED-COHERE), and its findings belong to
-  `prompts/4D_SCHEDULE_PERFECTION.md` §SCHED_TASK_BUCKET_SPLIT_BRAIN, not here.
-
-**So the only change this file's lane owns is §CLI_BAKE_FAIL_NO_TIMELINE** — the bake reporting its
-OWN failure honestly. Everything about the schedule it replays is the 4D lane's.
 
 ## §89 THE TINT CONTRACT IS A CROSS-FILE DEPENDENCY AND NOTHING WAS GUARDING IT (2026-09-13, `fix/bucket-key-floor` @ `ee7666ac`, worktree `/tmp/wt-v87`)
 

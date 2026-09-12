@@ -5156,638 +5156,89 @@ storeys that have walls). Payoff already measured in §S72.1: **Terminal midair 
 in `prompts/ROOM_INJECTION_CONSOLIDATED_REVIEW.md`; 4D is the consumer that exposed it.
 
 
-### §SCHED_TASK_BUCKET_SPLIT_BRAIN (2026-09-12) — an element's task bucket can disagree with its own
-### phase, and nothing re-derives it. Found via a missing Hospital floor; the defect is here, not there.
-**Provenance.** Traced from `prompts/MEP_CLASH_REVEAL_MOVIE.md` §88, where an 8,899 m² Hospital
-ground slab read as bare earth for a whole film. The RENDERING half of that story (which frames,
-which BatchedMesh, the §XRAY_STAGING_REMOVED gate applying or not) stays in §88.6-§88.7 of that
-file. **The SCHEDULE half is below, and it belongs to this lane** — per the user's ruling
-2026-09-12: *"Any timeline bug (which was clean prior) has to confine to the dedicated prompts/#
-governing it."* Section numbers below are kept as they were written (88.x) so the §88 trail is
-followable; read them as this file's.
+### §SCHED_TASK_BUCKET_SPLIT_BRAIN (2026-09-12/13) — FIXED. A persisted schedule that no longer
+### agreed with its own DB was replayed forever, and it held an 8,899 m² floor off the screen.
+**Provenance.** Traced from `prompts/MEP_CLASH_REVEAL_MOVIE.md` §88, where Hospital's ground floor read
+as bare earth. The RENDERING half stays there; the schedule half is this lane's. Shipped as
+**§KERNEL_OPS_SCHED_AGREE (#1727)**.
 
-**88.8 THE UPSTREAM CAUSE — the ground slab is built BEFORE its own foundation walls.**
-*(User: "What was the cause of it before this?" §88.7 named the mechanism that put the mis-stage on
-screen; this is what creates the mis-stage in the first place. Corrects §88.7c(1)'s guess that
-`_buildXraySupportCache` was inventing a carrier — it is not. The carrier is real.)*
-
-Exactly ONE op in all 63,415 ends at the slab's solidify time `1789798254510`:
-
+**THE CAUSE — 39 self-contradictory ops out of 63,415, and 28 of them are one wall type.**
+Comparing each op's OWN `phase` against its OWN `_task` bucket:
 ```
-3iM76qwej9Tf9ttHcbQrdG  IfcWallStandardCase  "Basic Wall:Foundation - 375mm Concrete w_ste…"
-  storey=Level 1  phase=Substructure  base_z=164.644  top_z=166.144
-  rank 864/63415   start 2026-09-19 05:57   end 2026-09-19 06:10
-0e8pm26Tv5vPrj6zU55MOH  IfcSlab  the 8,899 m² ground slab
-  storey=Level 1  phase=Superstructure  base_z=165.361  top_z=165.811
-  rank 805/63415   start 2026-09-18 16:37   end 2026-09-18 16:42
-                                            → gap = 13.47 hours
+28   phase='Substructure'  vs  _task='Architecture_Envelope'   ← Level 1 "Basic Wall:Foundation - 375mm Concrete"
+11   phase='Architecture'   vs  _task='Superstructure'
 ```
+No judgement about which table is authoritative is needed — **the op contradicts itself**.
+`rates.js`'s `foundation_wall_substructure` override ("a wall NAMED Foundation is substructure",
+`sequence: 1`) reached `phase`/`seq`/`_cell` but NOT the task bucket, which came from the bare class
+table (`IfcWallStandardCase → Architecture Envelope`). The support predicate reads the seq-1 answer,
+so the wall counts as a structural carrier; the timing reads the Architecture-Envelope answer, so it
+is poured **13.47 h after the slab it carries**. 20 of the 28 sit in-extent under that slab, so
+`_buildXraySupportCache` staged it and §XRAY_STAGING_REMOVED correctly refused to draw an unsupported
+floor. **The tables were right; only the cached answer was wrong.**
 
-It qualifies as a carrier on every clause and needs no roof-load-path promotion: `rates.js`'s
-`foundation_wall_substructure` override ("a wall NAMED Foundation is substructure") gives it
-**sequence 1**, so it lands in `structGrid`, not `wallGrid`. `base_z 164.644 < 165.361−EPS` and
-`top_z 166.144 ≥ 165.361−GAP` put it under the slab; `166.144 ≤ topBound 166.311` make it
-IN-EXTENT, so it sets `maxCarrierEnd`. And it is not alone: **20 of 20** in-extent wall carriers
-beneath that slab finish AFTER it.
+**WHY IT SURVIVED EVERY RUN.** `injectGantt()` sits behind `if (!_placeOps.length)` in
+`_activateAsync`, so a shipped 4D DB never re-derives — **0 `§GANTT_SOURCE` lines in 18 Hospital bakes
+and in four headful-GPU browser runs alike**. The only staleness gate was
+`_genVersion !== _GANTT_CACHE_VERSION`, which asks *"which algorithm made these ops?"* and never *"are
+they still true of this DB?"*. Hospital was the ONLY building where that equality held: Terminal and
+JKR ship no `kernel_ops`, HHS's are stamped 38 against a current 39 so they are cleared and re-derived.
+The ops were also on a different calendar from their own tasks (ops `2026-09-10..2027-07-17` vs tasks
+`2026-01-01..2026-11-26`) while `schedules.display_authored=1` asserts the two are the same thing —
+the signature of a `tasks` re-authoring that never invalidated the ops.
 
-**So §XRAY_STAGING_REMOVED is not misfiring. It is correctly reporting that the captured schedule
-pours an 8,899 m² ground-floor slab 13.5 hours before the foundation walls it bears on.**
-`Superstructure — Level 1` finishing ahead of `Substructure — Level 1` for the same storey is the
-defect; the invisible floor is the gate honestly refusing to draw an unsupported element.
+**BROWSER AND BAKE ARE THE SAME PATH — measured, not assumed.** Alt+C → `#cpe-ok` → `finish('ok')` →
+`__maxqBake`, and `cli_silent_bake.js`, both call `tmHasExistingSchedule` → `tmActivateForBake` →
+`activate` → `_activateAsync`. Four runs (cold profile, warm profile, Alt+C, plain TM open) all
+produced `§TM_OPS_CHECK total=63415 place=63415`, `capActive=false`, `staged=544`, and bare earth for
+13.47 h. ⚠ An earlier claim in this section that the browser rendered it correctly was NOT reproduced;
+the one mechanism consistent with it is a profile that derived once and now holds
+`§CACHE_PUT key=gantt:v39:Hospital` (correct ops) served via `§GANTT_CACHE_HIT`.
 
-⚠ **Why §88.6c's offline check said "not staged" and was wrong.** That re-implementation mapped
-`IfcWallStandardCase` to the class-table default (seq 6) and so routed these walls to `wallGrid`,
-which is only consulted for promoted slabs — excluding the very carriers that matter. It missed
-`SEQUENCE_NAME_OVERRIDES` entirely. A re-typed copy of a shipped predicate tests itself, not the
-code — the same lesson `witness_batch_bucket_class_paint.js` states in its own header (W-BBCP-5,
-"⚠ THE KEY IS SLICED OUT OF viewer/streaming.js AND EVALUATED, NEVER RE-TYPED HERE"). The runtime
-`__tmXrayProbe('map')` number is the one to trust.
+**THE FIX (#1727).** `_kernelOpsSchedStale` now also asks whether the ops still agree with the DB —
+a `_task`-vs-`task_elements` clause and, when `display_authored=1`, an op-window-vs-task-window clause.
+Chosen over bumping `_GANTT_CACHE_VERSION` by measurement: the version bump costs **650 ms → 7–8 s per
+activate fleet-wide** and re-freezes at the next re-authoring, while the agreement test costs
+**2.4–2.9 ms when it trips, 11.7–19.5 ms when the ops agree** (~1.8 % of a warm open) and makes the
+decision a property of the DB. Freshly derived ops measure `noTask=0` and land inside the task window,
+so there is no re-derive loop.
 
-**88.8a REVISED FIX ORDER, replacing §88.7d.**
-1. **Fix the schedule, not the gate.** `Substructure — Level 1`'s foundation walls must finish
-   before `Superstructure — Level 1`'s ground slab. Witness: for every IfcSlab, no in-extent
-   structGrid carrier may have `end_ts` greater than the slab's — asserted per building, with the
-   count of violations reported, not averaged away. Hospital's current count for this one slab is
-   20/20.
-2. **Only then** merge §BATCH_BUCKET_CLASS_PAINT. Merging it first ships the missing floor, because
-   it removes the accident (§88.7c(2)) that is currently drawing the slab anyway.
-3. **Independently**, the `_incrOK` skip leaving a stale `setVisibleAt(true)` is its own correctness
-   hole — it is what kept a real, 13.5-hour schedule inversion off the screen for however long it
-   has been in the data. A gate that only applies when the batch happens to be touched is not a gate.
-   Note the direction this cuts: fixing the skip WITHOUT fixing (1) also makes the floor disappear.
-
-**88.9 THE ACTUAL CAUSE — 28 foundation walls are filed under the wrong TASK, and only those 28.**
-*(User: "I prefer you identify the actual cause and grasp why it happened." §88.8 said "the schedule
-is inverted", which is a restatement, not a cause. This is the cause.)*
-
-The model is RIGHT. `tasks` carries the correct order and `task_elements` carries the correct link:
-
+**MEASURED AFTER — browser cold, browser warm, and silent bake all agree:**
 ```
-TASK_Substructure_Level_1     2026-01-01 .. 2026-01-12   ← the foundation walls belong here
-TASK_Superstructure_Level_1   2026-01-12 .. 2026-01-25   ← the 8,899 m² ground slab
-task_elements(3iM76qwej9Tf9ttHcbQrdG) = TASK_Substructure_Level_1     ✓ correct
+§KERNEL_OPS_SCHED_AGREE verdict=window → §KERNEL_OPS_SCHED_VERSION stale ... cleared 63415 ops
+§GANTT_SOURCE captured tasks=41 covered=63415 pct=100
+§TIME_MACHINE ON — 321 days, 1/10/2026 → 11/26/2026        (was 310 days from 2026-09-10)
+§XRAY_EDGES staged=501/63415                                (was 544)
+wall 3iM76qwej9Tf9ttHcbQrdG → TASK_Substructure_Level_1     11.8 days BEFORE the slab
+map['0e8pm26Tv5vPrj6zU55MOH'] === undefined                 the slab leaves staging
 ```
+and the Level 1 concrete deck is present in the bake's own frames.
 
-The persisted `kernel_ops` row for that same wall says otherwise:
-
-```
-_task:    "TASK_Architecture_Envelope_Level_1"     ✗  — a task that runs AFTER Superstructure
-taskName: "Architecture Envelope — Level 1"
-phase:    "Substructure"        ← the name-override DID land here
-_cell:    "L0·T1·L0"            ← …and here: T1 = sequence 1, substructure trade
-```
-
-**One element, two different phase answers.** `rates.js`'s `foundation_wall_substructure` override
-("a wall NAMED Foundation is substructure", `sequence: 1`) reached the op's `phase`/`seq`/`_cell`
-fields but NOT its task bucket, which was taken from the plain class table
-(`IfcWallStandardCase → 'Architecture Envelope'`). The support predicate reads the seq-1 answer, so
-the wall counts as a structural carrier; the timing reads the Architecture-Envelope answer, so it is
-poured after the slab it carries. Same family as §GANTT_PHASE_CLOBBER — two fields that must agree,
-and one lane not being told.
-
-**How wrong, exactly — audited across all 63,415 ops against `task_elements`:**
-
-| `_task` vs `task_elements` | count | share |
-|---|---|---|
-| agrees | 49,841 | 78.6 % |
-| **phase shift only** | **28** | 0.04 % |
-| storey shift only | 13,546 | 21.4 % |
-
-**Every one of the 28 phase shifts is the same shift** — `Substructure → Architecture_Envelope` —
-and every one is a Level 1 `Basic Wall:Foundation - 375mm Concrete w_step`. That is the entire
-population of this bug, and 20 of the 28 sit in-extent under the ground slab.
-
-**The timing follows the wrong task, not the right one.** All 28 walls' op starts fall inside
-Architecture-Envelope-L1's element envelope (`09-19 00:00 .. 10-06 23:18`), none inside
-Substructure-L1's (`09-10 22:59 .. 09-13 06:27`). Filed correctly they would finish **5.4 days
-before** the slab (`09-13 06:27` vs slab end `09-18 16:42`) and `_buildXraySupportCache` would have
-had nothing to stage. Filed as they are, `maxCarrierEnd` lands 13.47 h past the slab and the gate
-hides an 8,899 m² floor.
-
-**And the bake cannot correct it.** `§CPE_BUILDUP_SOURCE … capActive=false` — the captured
-re-injection does not re-run; `injectGantt`'s `_cap.guidTask` join (which reads `task_elements`
-directly and would have produced the right bucket) is bypassed, and the film replays the persisted
-`kernel_ops` timestamps verbatim. The misassignment was baked into the DB at `_genVersion: 39` and
-every bake since has replayed it.
-
-**88.9a THE FIX IS ONE LANE, NOT THE GATE.** Task-bucket assignment must use the SAME classifier
-result the `phase`/`seq`/`_cell` fields already use — i.e. `matchRule(cls, name)` including
-`SEQUENCE_NAME_OVERRIDES`, or better, `task_elements` itself, which is already correct here and
-which `_cap.guidTask` already reads. Witness: for every op, `params._task` must equal a
-`task_elements` row for that guid; Hospital's current failure count is **13,574** (28 phase, 13,546
-storey). Nothing in §88 needs the staging gate, the ghost plane, the bucket key or the Time Machine
-to change.
-
-**88.9b SEPARATE, LARGER, NOT THE §88 CAUSE — the 13,546 storey shifts.** They are near-uniformly
-**one storey upward** (`Architecture_Envelope_Level_4` where `task_elements` says `Level_3`,
-`MEP_Rough_in_Level_5` → `Level_4`, `Superstructure_Level_2` → `Level_1`). That is an off-by-one in
-the storey ladder used at op-generation time, and §STOREY_DATUM_FRAME (`f289da6b`, #1641) plus the
-v86 log's own `§FLYTHRU_DATUM_ZDATUM levels=0.00..34.00 elements=156.61..203.62 offset=165.81m
-(levels were in a LOCAL datum)` are where to start. It does not cause the missing floor — the
-foundation walls are in the 28, not the 13,546 — but it means a fifth of this film's elements are
-playing in the wrong storey's bar.
-
-**88.10 THE INJECTION NEVER RUNS — and the bake is NOT the one at fault.**
-*(User: "doesn't it get Time Machine 4D timeline one time injection first? … Silent bake must follow
-suit and not invent a different setting. So be sure why it also not hard fail when it has no
-schedule info." Three questions, three measured answers. The second one clears the bake entirely.)*
-
-**88.10a THE BAKE INVENTS NOTHING — it runs the shipped verb.** `cli_silent_bake.js` calls
-`window.tmActivateForBake()`, which calls the same `activate(true)` → `_activateAsync` a real Time
-Machine open calls; the only difference is `silent` (no panel). Proof that both land on the same
-branch — the identical line, same numbers, in the v86 branch bake and in a `main` clip bake:
-```
-§TM_OPS_CHECK total=63415 place=63415
-```
-There is no separate bake schedule path to blame: the bake calls the shipped verb. What the BROWSER
-does was NOT measured — see §SCHED_BROWSER_IS_OK below before reading any of this as browser behaviour.
-
-**88.10b …AND WHAT BOTH DO IS SKIP THE INJECTION.** In `_activateAsync`, `injectGantt()` is inside
-`if (!_placeOps.length)`. `Hospital_silent.db` SHIPS with 63,415 persisted `ELEMENT_PLACE` rows, so
-that branch is never entered. Measured across every bake in this session and the v86 one:
-
-```
-§GANTT_SOURCE      0 lines      ← injectGantt never ran in the BAKE, captured OR generated
-§GANTT_CACHE_HIT   0 lines      ← not the IDB fast path either (fresh --profile, empty IDB)
-§TM_OPS_CHECK      place=63415  ← the persisted table was simply adopted
-```
-
-This is also why `§CPE_BUILDUP_SOURCE … capActive=false`: `_capActive` is set inside injectGantt's
-captured branch, and that branch never executed. `injectGantt`'s `_cap.guidTask` join — which reads
-`task_elements` directly and would have put those 28 foundation walls back in
-`TASK_Substructure_Level_1` — is bypassed on every BAKE open. (Browser: unmeasured, and the user
-reports it is fine — §SCHED_BROWSER_IS_OK.)
-
-**88.10c THE GATE THAT SHOULD HAVE CAUGHT IT CHECKS THE WRONG THING.** The only staleness test on
-that persisted table is
-```js
-function _kernelOpsSchedStale(placeOps, currentVersion) {
-  return !!(… placeOps[0].parameters._genVersion !== currentVersion);
-}
-var _GANTT_CACHE_VERSION = 39;   // §STOREY_DATUM_FRAME (2026-09-03)
-```
-The ops carry `_genVersion: 39`; current is 39 → **not stale**, adopted verbatim. That stamp answers
-"were these ops produced by the current ALGORITHM?" It never asks "do these ops still agree with
-`tasks` / `task_elements`?" So a misassignment, once written, is immortal until a human bumps the
-constant — and §88.9's 28 walls have been replayed by every bake since.
-
-**88.10d CORRECTION TO §88.9b — the two disagreements have OPPOSITE polarity.** Checked each
-mismatched op's task storey against the element's own `elements_meta.storey`:
-
-| mismatch class | count | which side matches the element's own storey |
-|---|---|---|
-| phase shift (`Substructure → Architecture_Envelope`) | 28 | **`task_elements` is right**, the op is wrong |
-| storey shift (one level up) | 13,546 | **the op is right** (7,491 exact matches), `task_elements` matches **0** |
-
-So `task_elements` is the stale side on the storey axis (a `materializeZones` band artifact), and the
-op is the stale side on the phase axis. **"Just re-derive from `task_elements`" is therefore the
-WRONG fix** — it would repair the 28 and break 13,546. §88.9a is amended accordingly: fix the
-classifier, not the source. The task bucket must be chosen with the SAME `matchRule(cls, name)`
-result (including `SEQUENCE_NAME_OVERRIDES`) that already produced `phase: "Substructure"` and
-`_cell: "L0·T1·L0"` on those very ops.
-
-**88.11 NO — §88.9's CAUSE STANDS, and it is now provable WITHOUT `task_elements`.**
-*(User: "Does this mean we mistaken our earlier ground slab bug cause?")* §88.10d raised a fair
-doubt: if `task_elements` is the stale side on the storey axis, why trust it on the phase axis? The
-answer is that we no longer need to. Comparing each op's OWN `phase` field against its OWN `_task`
-bucket (normalised), across all 63,415:
-
-```
-ops whose own phase contradicts their own _task bucket:  39 / 63,415
-   28   phase='Substructure'   vs  _task='Architecture_Envelope'   ← §88.9's foundation walls
-   11   phase='Architecture'   vs  _task='Superstructure'
-```
-
-**39 self-contradictory ops in the whole schedule, and 28 of them are the Level 1 foundation walls.**
-The op says Substructure in `phase`, Substructure in `_cell` (`L0·T1·L0`, tier 1), and
-Architecture Envelope in `_task`. That is internal inconsistency, not a disagreement between two
-sources — so no judgement about which table is authoritative is required, and §88.10d's polarity
-finding does not touch it. The 13,546 storey shifts remain an op-vs-`task_elements` disagreement
-where the op is the better witness; the 28 phase shifts are the op contradicting itself.
-
-**Nothing in §88.6-§88.9 changes.** The chain is unaltered: 28 walls mis-bucketed → 20 of them
-in-extent carriers finishing 13.47 h after the ground slab → `_buildXraySupportCache` stages the slab
-→ §XRAY_STAGING_REMOVED hides it → visible or not depending on batching (§88.7). §88.10 explains why
-the misassignment is immortal, not who caused it.
-
-
-**§SCHED_TASK_BUCKET_SPLIT_BRAIN — W-SCHED-COHERE, the witness, and what it found beyond §88.**
-`viewer/tests/witness_schedule_coherence.js` (node, DB-only, no GPU, <1 s per building). It lives
-here and NOT inside `cli_silent_bake.js`: the bake plays the timeline and must not carry a second
-opinion about it (user, 2026-09-12: *"bake follows 4D timeline and not has extra script to it"*), and
-an audit in the harness would have to re-type the phase/task semantics — the same trap §88.9 was
-caught by. Three gates: **G-SC-SELF** (ops whose own `phase` contradicts their own `_task`; blocking
-only against a recorded `BASELINE`, fails on an INCREASE), **G-SC-TE** (ops whose `_task` matches no
-`task_elements` row; reported, never blocking — see the polarity finding above), **G-SC-CARRY** (per
-IfcSlab, in-extent structural carriers finishing AFTER it — the number that becomes an invisible
-floor). Measured:
+**W-SCHED-COHERE — `viewer/tests/witness_schedule_coherence.js`.** Node, DB-only, no GPU, <1 s per
+building. It lives here and NOT in `cli_silent_bake.js`: the bake PLAYS the timeline and must not
+carry a second opinion about it (user: *"bake follows 4D timeline and not has extra script to it"*),
+and an audit in the harness would have to re-type the phase/task semantics — the trap this section was
+itself caught by. Gates: **G-SC-SELF** (own `phase` vs own `_task`; blocking against a `BASELINE`,
+fails on an increase), **G-SC-TE** (reported, never blocking), **G-SC-CARRY** (per IfcSlab, in-extent
+carriers finishing after it — the number that becomes an invisible floor).
 
 | building | selfContradictory | slabsWithLateCarriers | lateCarriers | worst |
 |---|---|---|---|---|
-| `Hospital_silent` | **39** | **19** | 60 | 55.55 h |
-| `Hospital_silent_local` | 39 | 19 | 60 | 55.55 h |
+| `Hospital_silent` | 39 | 19 | 60 | 55.55 h |
 | `HHS_Office_Federated_silent` | 8 | 5 | 6 | 0.38 h |
 | `JKR_extracted` | **0** | **70** | **226** | **257.30 h** |
 
-**Two findings beyond what §88 asked for.** (1) §88's ground slab is **one of Hospital's 19**, not a
-singleton — same shape, a slab scheduled ahead of what holds it up. (2) **JKR has the fleet's worst
-inversion (226 late carriers, 10.7 days) with ZERO self-contradictory ops**, so G-SC-SELF and
-G-SC-CARRY are INDEPENDENT: the task-bucket split-brain is not the only route to a slab preceding its
-carriers, and fixing the classifier will not clear JKR. Whatever is doing that there is unfound.
+*(G-SC-CARRY reads the FROZEN rows in the file; it is not what the Time Machine now plays — the played
+number is `§XRAY_EDGES staged=501`.)*
 
-**§SCHED_BROWSER_IS_OK (2026-09-12) — ⚠ CORRECTION, and the gap that matters most.**
-*(User: "But it is ok when running Time machine on browser. Don't transgress such truth.")* Correct,
-and the sections above originally overreached. **Every `§GANTT_SOURCE` / `§TM_OPS_CHECK` /
-`§CPE_BUILDUP_SOURCE` number in this section was read out of CLI BAKE logs.** No browser session was
-ever observed. I inferred browser parity from reading `_activateAsync` and wrote it as measured —
-that inference is now withdrawn wherever it appeared.
+**⚠ STILL OPEN, AND NOT THIS FIX'S SHAPE — JKR.** 70 slabs with late carriers, 226 of them, worst
+257.30 h, with **ZERO self-contradictory ops** and no `kernel_ops` to blame. G-SC-SELF and G-SC-CARRY
+are independent conditions; fixing the task-bucket classifier does not touch JKR. Whatever puts a slab
+ahead of its carriers there is unfound. Hospital's own 19 should be re-checked against it.
 
-**The user's direct observation outranks it: the Time Machine renders the floor slabs correctly in
-the browser.** So one of these is true, and WHICH ONE is the first thing the dedicated 4D session
-should establish, because it changes the whole shape of the fix:
-1. The browser DOES re-derive — its IndexedDB `gantt` cache is absent or dropped
-   (`§GANTT_STALE_CACHE`), it takes the cold path, `injectGantt` runs, `_cap.guidTask` reads
-   `task_elements` and re-buckets those 28 walls correctly. Then the persisted ops in the shipped
-   `.db` are simply never what the browser plays, and the defect is bake-path-only.
-2. The browser replays the same ops, and the slab draws for the §88.7c(2) reason — a stale
-   `setVisibleAt(true)` surviving the `_incrOK` skip — exactly as it does on `main` in the bake.
-   Then "it is ok" is the same accident, not a difference.
-
-**⚠ AND THE CHECK IS NOT "GO LOOK IN THE BROWSER" EITHER.** *(User: "It should not be tied to the
-browser. There should be separation of concern. The code or script itself can be run in the same way
-either from browser or from silent command line mode.")* Resolving (1) vs (2) by grepping a browser
-console — which is what this section said a moment ago — accepts the premise that the host decides
-the timeline. **That premise is the defect.**
-
-`_activateAsync` branches on state that belongs to the HOST, not to the model:
-- `cacheGet('gantt')` is IndexedDB. A browser that has opened the Time Machine before has it; a bake
-  with a fresh `--profile` never does. Same `.db`, same tasks, different path taken. *(Read from the
-  code, not measured — the bake side is measured: fresh profile, `§GANTT_CACHE_HIT` absent.)*
-- The persisted `kernel_ops` rows in the shipped `.db` are adopted or not depending on that.
-
-So whether `injectGantt` re-derives — and therefore whether those 28 walls get re-bucketed through
-`_cap.guidTask` — is decided by browser storage history. That is the separation-of-concern break, and
-it is a bigger finding than the 28 walls: **two hosts can play the same building on two different
-timelines and both think they are right.**
-
-**What to require instead.** Timeline derivation must be a PURE FUNCTION OF THE DB — `tasks`,
-`task_elements`, `elements_meta`, `element_transforms` — and must produce byte-identical ops whether
-it is driven from a browser or from `cli_silent_bake.js`. Host-owned state (IndexedDB, a profile
-directory, a prior session) may only ever be a CACHE of that function, never an input to it: a cache
-whose absence changes the answer is not a cache. The gate that would hold this is host-independent by
-construction — run the shipped derivation against the DB in node, twice, from cold and from warm, and
-assert the op set is identical. `viewer/tests/witness_schedule_coherence.js` already reads what is
-persisted; the missing half is asserting what SHOULD be derived, and neither half needs a browser.
-
-**Until that gate exists, nothing in this section describes anything but a bake.**
-
-**§SCHED_TASK_BUCKET_SPLIT_BRAIN — HOW TO RESOLVE IT (2026-09-12, brief for the dedicated 4D session).**
-Four steps, in this order. Steps 1 and 2 are the fix; 3 is the acceptance bar; 4 is what is left over.
-
-**1. Make `kernel_ops` a CACHE of a derivation, not a stored answer.** This is the separation-of-concern
-fix and it subsumes the host question. Today `_activateAsync` re-derives only when the table is EMPTY
-(`if (!_placeOps.length)`), and the one staleness gate —
-`_kernelOpsSchedStale`: `_genVersion !== _GANTT_CACHE_VERSION` — asks whether the current ALGORITHM
-produced the ops, never whether they still match the MODEL. So the timeline is whatever was frozen in
-the last time someone injected, and `tmHasExistingSchedule()` answers `true` straight off those rows.
-- Replace the version stamp with an **input signature**: a cheap hash over exactly what the derivation
-  reads — the dated leaf `tasks` rows, `task_elements`, each element's classification inputs
-  (`ifc_class`, `element_name`, `storey`), and the rates/override table version. Stamp it on the ops.
-- On activate, recompute the signature and re-derive when it differs. Same signature gates the IDB
-  `gantt` cache.
-- The property to hold: **same `.db` ⇒ same ops, from either host.** IndexedDB and the `--profile`
-  directory become caches of that function and can never change the answer — a cache whose absence
-  changes the answer is not a cache. `§CPE_BUILDUP_FOLLOW_TM` ("the film PLAYS the Time Machine, it
-  does not author an order") already states the doctrine; this makes it true of the data too.
-
-**2. Fix the classifier that produced the wrong answer** — otherwise step 1 just re-derives it faithfully.
-One element currently gets TWO phase answers: `matchRule(cls, name)` (with `SEQUENCE_NAME_OVERRIDES`)
-writes `phase`/`seq`/`_cell`, while the task bucket is taken from the bare class table. On Hospital's
-28 Level 1 "Foundation" walls that is `Substructure` vs `Architecture_Envelope`. **One classifier call,
-one answer, consumed by both lanes.**
-⚠ Do NOT "fix" this by re-deriving the bucket from `task_elements`: the polarity check says it is the
-STALE side on the storey axis (the op matches `elements_meta.storey` 7,491 times, `task_elements` 0).
-Fix the classifier, not the source.
-
-**3. Acceptance — host-independent by construction, no browser in the loop.**
-- `G-SC-SELF = 0`: no op's own `phase` may disagree with its own `_task` bucket. Hospital is at 39.
-- Determinism: run the shipped derivation in node against the same `.db` twice — cold and warm — and
-  assert the op set is byte-identical. This is the gate that would have caught the whole class.
-- `viewer/tests/witness_schedule_coherence.js` (W-SCHED-COHERE) already reads what is persisted; the
-  missing half is asserting what SHOULD be derived. Neither half needs a GPU or a browser.
-
-**4. WHAT WILL STILL BE BROKEN AFTERWARDS — the user's own instinct, and the measurement backs it.**
-`G-SC-CARRY` is INDEPENDENT of `G-SC-SELF`. **JKR: 70 slabs with late carriers, 226 of them, worst
-257.30 h — with ZERO self-contradictory ops.** Steps 1-2 cannot touch that. Re-run W-SCHED-COHERE after
-the fix; whatever `G-SC-CARRY` still reports is the remaining, unfound defect, and Hospital's own 19
-slabs should be re-checked against it too — §88's ground slab was never a singleton.
-
-**AND DO NOT "FIX" THE STAGING GATE.** `§XRAY_STAGING_REMOVED` is correct: it refuses to draw an
-element whose support is not finished. Two traps, both measured: teaching it a ground-bearing exemption
-(§88.7d item 1, struck) makes it ignore the exact case it exists for; and fixing the `_incrOK` stale
-`setVisibleAt` hole WITHOUT steps 1-2 makes MORE floors vanish, not fewer, because that stale `true` is
-currently the only reason Hospital's slab draws at all on `main`.
-
-**§SCHED_TASK_BUCKET_SPLIT_BRAIN — THE OPS ARE A SNAPSHOT OF A `tasks` TABLE THAT NO LONGER EXISTS.**
-*(User: "Since most of the building renders correctly, that floor slab must be some omission in
-variables when the first time we created a silent bake process." The instinct — an omission at
-creation — is right. The location is the DB, not a bake flag.)* Measured on `Hospital_silent.db`:
-
-```
-schedules            SCH_AUTHORED  gen_version=39  display_authored=1  created 2026-01-01
-dated leaf TASKS     2026-01-01 .. 2026-11-26        41 tasks,  329 days
-kernel_ops           2026-09-10 .. 2027-07-17                   310 days
-```
-
-**The ops and the tasks are on different calendars, eight months and 19 days apart.** Yet every op
-carries `_captured: 1`, `_task` and `taskName` — fields only `_writeScheduledChunked` writes, i.e.
-they DID go through the captured branch once, against a `tasks` table whose window was the one they
-still carry. And `schedules.display_authored=1` asserts the task windows are VIEWS of these very
-element times (it is the flag `§CAP_RESCALE_SKIP` and `§OG_SWEEP_SKIP` both key on) — in this DB that
-assertion is simply false.
-
-**So one event explains all three symptoms at once: the `tasks`/`task_elements` tables were
-re-authored (materializeZones) AFTER the ops were captured, and nothing ever re-derived the ops.**
-That single event accounts for the calendar divergence, the 13,546 one-storey `_task` shifts, and the
-28 phase shifts — the ops are frozen against a task table that has since been replaced. It is not a
-`cli_silent_bake.js` flag: the same silent bake on `main` DRAWS the floor (§88.7a), and no CLI
-argument can write rows into a shipped `.db`.
-
-**What this adds to the resolution brief.** Step 1's input signature must cover the `tasks` /
-`task_elements` rows themselves, precisely so that re-authoring them invalidates the ops. Had that
-existed, this DB would have re-derived on the next open and §88 would never have had a symptom. And
-it gives a cheap standing check, independent of everything else: **`display_authored=1` must imply the
-task window equals the op window.** Here it does not, and that single inequality is detectable in one
-SELECT.
-
-**§SCHED_TASK_BUCKET_SPLIT_BRAIN — TRACED: `kernel_ops` HAS TWO HOMES AND NO ARBITRATION.**
-*(User: "The source of truth is the same, DB and IndexDB which takes from OCI. Trace it if you
-agree." Agreed, and the trace lands on the join between them.)*
-
-```
-OCI  https://objectstorage.ap-kulai-2.oraclecloud.com/.../b/bim-ootb/o/   (config.js A.PROD_BASE)
-  └─ Hospital_silent.db  ── fetched bytes, cached verbatim in IDB CACHE_STORE by URL
-        └─ table kernel_ops        ← the 63,415 frozen ELEMENT_PLACE rows (§88's 28 walls live here)
-
-IndexedDB  same CACHE_STORE, different key: _cacheKey('gantt')
-  └─ cachePut('gantt', _ops)   written by the cold path after injectGantt      (time_machine.js :8921)
-     cacheGet('gantt')         read FIRST on every activate                    (time_machine.js :8802)
-        └─ §GANTT_CACHE_HIT →  DELETE FROM kernel_ops WHERE op_type='ELEMENT_PLACE'
-                               then re-INSERT every row from the cached JSON   (:8830-8847)
-```
-
-**The IDB copy does not cache the DB's ops — it REPLACES them, by DELETE + INSERT, on every warm
-open.** So a host that has ever opened the Time Machine plays the IDB schedule; a host with no IDB
-entry (a bake with a fresh `--profile`, a new browser profile, cleared site data) plays the `.db`'s
-frozen rows. Same OCI artefact, two different timelines, and **neither copy carries a signature of
-the inputs it was derived from** — not the `tasks` rows, not `task_elements`, not the rates/override
-version. `cacheDel('gantt')` exists for an explicit refold and `§GANTT_STALE_CACHE` drops the entry
-when the DB has no schedule at all, but nothing ever asks "is this cache still true of this DB?".
-
-**This is the whole defect, stated once.** The floor slab is not a bake variable and not a renderer
-bug: `kernel_ops` is a DERIVED artefact stored in two places that can disagree, with the host deciding
-which one is authoritative. Everything else in this section is a consequence — the 28 mis-bucketed
-walls (what the frozen copy happens to contain), the 329-day/310-day calendar divergence (the frozen
-copy predates a `tasks` re-authoring), and "it is ok in the browser" (the IDB copy is the fresher of
-the two, for that host only).
-
-**The fix does not change: §SCHED_TASK_BUCKET_SPLIT_BRAIN's step 1.** Stamp both copies with an input
-signature over `tasks` + `task_elements` + element classification inputs + rates version; re-derive
-when it differs; then the two homes cannot disagree, because both are the same pure function of the
-same OCI bytes. Step 2 (one classifier, one phase answer) is what makes that derivation correct once
-it runs. Step 4's JKR finding (70 slabs, 226 late carriers, 0 self-contradictory ops) is untouched by
-either and remains the open one.
-
-**§SCHED_TASK_BUCKET_SPLIT_BRAIN — MEASURED IN A REAL BROWSER (2026-09-12). The frozen ops are wrong;
-re-deriving fixes them. And §SCHED_BROWSER_IS_OK was NOT reproduced.**
-Four headful-GPU runs (NVIDIA RTX 4060 via ANGLE gl-egl), driving the user's own path — Alt+C
-(`scene.js:3131` → `startMaxQualityOrbit`) then a real DOM click on `#cpe-ok` → `finish('ok')`
-(`cinema_path_editor.js:3857`), panel confirmed `{"buildup":true}` so `cinema_maxq.js:1426
-tmActivateForBake()` really ran.
-
-**A (cold, new profile) and B (warm, same profile) are byte-identical to the CLI:**
-```
-§GANTT_SOURCE        0 lines        §GANTT_CACHE_HIT   0 lines      §CACHE_PUT  0 lines
-§TM_OPS_CHECK total=63415 place=63415
-§AUTHOR_DETECT ... genVersion=39 current=39 stale=false safeToRegen=false
-§CPE_BUILDUP_SOURCE ... capOps=63415/63415 capActive=false window=2026-09-10..2027-07-17
-__tmXrayProbe('map')  staged=544  map['0e8pm26Tv5vPrj6zU55MOH'] = 1789798254510
-```
-Warm is not different because the cold run **never wrote a cache**: the frozen-ops branch returns
-before `cachePut('gantt')`. Screenshots at cursor 1789760000000 = **bare earth**, at 1789800000000
-(13.47 h later) = **the full 8,899 m² deck**. ⚠ **So "it is ok when running Time Machine on browser"
-did NOT reproduce on the shipped DB.** The one mechanism consistent with it: a profile that ever
-derived once holds `§CACHE_PUT key=gantt:v39:Hospital size=29328KB` — CORRECT ops — and every later
-open serves them via `§GANTT_CACHE_HIT`. That is a hypothesis from an observed cache write, not an
-observation of the user's session.
-
-**C/D (forced: `DELETE FROM kernel_ops WHERE op_type='ELEMENT_PLACE'` in memory, then activate):**
-```
-§TM_OPS_CHECK total=3 place=0
-§GANTT_SOURCE captured tasks=41 covered=63415 generated=0 total=63415 pct=100
-§TIME_MACHINE ON — 63418 ops, 321 days, project: 1/10/2026 → 11/26/2026   ← now MATCHES tasks
-§XRAY_EDGES staged=501/63415                                              ← was 544
-wall 3iM76qwej9Tf9ttHcbQrdG  _task="TASK_Substructure_Level_1"  (was Architecture_Envelope)
-   → finishes 11.8 DAYS BEFORE the slab instead of 13.47 h after
-map['0e8pm26Tv5vPrj6zU55MOH'] === undefined                               ← the slab leaves staging
-```
-and the floor draws at its own `_end_ts` with no hole.
-
-**So the verdict is (a), and it is narrow.** Nothing is wrong with the staging gate, the renderer, the
-bake, the classifier as it runs live, or the two-homes architecture. **The shipped Hospital DB's
-frozen `ELEMENT_PLACE` rows are simply wrong** — 13,574 of 63,415 (21.4 %) carry a `_task` that
-contradicts the DB's own `task_elements`, including all 28 foundation walls — and they are adopted
-because `_genVersion=39` equals `_GANTT_CACHE_VERSION=39`, so `_kernelOpsSchedStale` reports
-`stale=false`. Hospital is the only building where that equality holds (Terminal/JKR ship no
-`kernel_ops`; HHS's are stamped 38). **The tables are right; only the cached answer is wrong.**
-
-**THE FIX IS THE STALENESS DECISION, AND NOTHING ELSE.** Make Hospital's ops re-derive — bump the
-constant, or add the agreement test — and the measurement above is the acceptance evidence:
-`§GANTT_SOURCE` appears, the wall lands in Substructure, `staged` drops 544 → 501, the slab leaves
-the map, the floor is on time. Do NOT pursue: a ground-bearing exemption in the gate, the
-`_incrOK`/`setVisibleAt` path, §BATCH_BUCKET_CLASS_PAINT, or the in-extent GAP constant (tested:
-tightening it moves Hospital 60 → 55 late carriers and moves HHS and JKR not at all).
-
-**Incidental, and it explains the user's "open Time Machine first":** with `ELEMENT_PLACE` deleted,
-Alt+C → OK refuses outright — `§CPE_BUILDUP_SKIP reason=no schedule generated yet — open Time Machine
-first` (§CPE_BUILDUP_REQUIRE_TM_FIRST). **The movie button never derives; only a Time Machine open
-does.** So the "automatic timeline injection" is that one open, and a host that never performs it
-cannot correct a bad cached schedule by baking.
-
-**STILL OPEN, untouched by any of this:** JKR — 70 slabs with late carriers, 226 of them, worst
-257.30 h, with ZERO self-contradictory ops and no `kernel_ops` to blame.
-
-
-**§SCHED_TASK_BUCKET_SPLIT_BRAIN — RESOLUTION SPEC (2026-09-12, dedicated 4D session). Spec before
-code, per the repo's standing rules. Scope: make Hospital's frozen `kernel_ops` re-derive. Nothing else.**
-
-**R0. STEP 0 — the brief was re-verified from source and from a real browser before anything changed.**
-Both facts hold.
-
-*V1 — the gate, read out of `viewer/time_machine.js` on `origin/main` @ `d993bc94`:*
-```js
-:8721  function _kernelOpsSchedStale(placeOps, currentVersion) {
-:8722-3  return !!(placeOps && placeOps.length && placeOps[0].parameters &&
-             placeOps[0].parameters._genVersion !== currentVersion);
-:8595  var _GANTT_CACHE_VERSION = 39;   // §STOREY_DATUM_FRAME (2026-09-03)
-:8886  if (_kernelOpsSchedStale(_placeOps, _GANTT_CACHE_VERSION)) {   // the only call site
-```
-`Hospital_silent.db`: 63,415 `ELEMENT_PLACE` rows, `_genVersion` histogram `{39: 63415}` — every row,
-not a sample. 39 === 39 ⇒ `stale=false` ⇒ the table is adopted verbatim. **⚠ ONE PRECISION THE BRIEF
-OWES:** `_kernelOpsSchedStale` is the only *schedule*-staleness gate, but it is not the only gate on
-the table — `:8882` clears ops that lack `_end_ts` (a SCHEMA-SHAPE gate, and Hospital's rows have
-`_end_ts`, so it passes too). Nothing else inspects the persisted rows. `injectGantt()` is reached
-from `_activateAsync` only at `:8907`, inside `if (!_placeOps.length)`; the sole other reach is the
-`.catch()` fallback at `:8947`, itself gated `if (!_ops.length)`. Both require an EMPTY table.
-
-*V2 — forced re-derivation, reproduced in a headful-GPU browser (NVIDIA RTX 4060 via ANGLE gl-egl),
-`run_V2.log`, this session, on unmodified `origin/main`:* delete `ELEMENT_PLACE` in memory + drop the
-IDB `gantt` key, then `window.toggleTimeMachine()`:
-```
-§TM_OPS_CHECK total=3 place=0
-§GANTT_SOURCE captured tasks=41 covered=63415 generated=0 total=63415 pct=100
-§TIME_MACHINE ON — 63418 ops, 321 days, project: 1/10/2026 → 11/26/2026      ← tasks are 2026-01-01..2026-11-26
-§XRAY_EDGES n=38802 ms=183.9 staged=501/63415                                 ← was 544
-§A88_XRAY_PROBE_TMOPEN {"n":501,"staged":501,"solidified":0,"active":true,"ops":63418}   ← no `slab` key ⇒ map[0e8pm26…] === undefined
-wall 3iM76qwej9Tf9ttHcbQrdG  _task="TASK_Substructure_Level_1"   (frozen row said TASK_Architecture_Envelope_Level_1)
-§A88_SLAB_VIS cursor=1769100000000 {"slab":" batched:false"}     ← before its own _end_ts 1769192753996
-§A88_SLAB_VIS cursor=1769193000000 {"slab":" batched:true"}      ← after it: the deck draws
-§CACHE_PUT key=gantt:v39:Hospital size=29328KB                   ← the CORRECT ops are what gets cached
-```
-**Both V1 and V2 hold. The brief stands.** The defect is the staleness decision and nothing else.
-
-**R1. THE CHOICE — measured, not argued.**
-
-*Option A — bump `_GANTT_CACHE_VERSION` 39 → 40.*
-Cost of the re-derivation it forces, from this session's own `§S4_ACTIVATION_TIMING_FINISH` marks on
-the same machine and the same DB:
-
-| Hospital Time Machine open | `totalSinceActivate` | derivation ran? |
-|---|---|---|
-| frozen ops adopted (`run_A`, today's behaviour) | **650 ms** | no |
-| re-derived (`run_C` / `run_D`) | **8,043 / 7,047 ms** | yes (`afterInjectGantt` 7,029 / 5,963 ms) |
-
-So ≈ **+6.4 to +7.4 s, once**, then `§CACHE_PUT gantt:v40:…` makes every later open warm. The costs A
-carries that do not show in that number: the bump changes the IDB cache KEY, so it also discards every
-user's warm `gantt:v39:*` entry fleet-wide — including entries holding CORRECT ops — and it is a
-one-shot data patch wearing a code change's clothes: the next time a `tasks` table is re-authored
-after ops are captured (exactly the event §SCHED_TASK_BUCKET_SPLIT_BRAIN traced), the ops freeze again
-at v40 and the next human has to notice and bump again.
-
-*Option B — an agreement test: the persisted ops must still be TRUE OF the DB they sit in.*
-Both candidate clauses were measured offline against the shipped DBs before a line was written:
-
-| clause | Hospital_silent | HHS_Office_Federated_silent (ops already correct) |
-|---|---|---|
-| **B-TE** ops whose `_task` has no `task_elements` row for that guid | **13,574 / 63,415 = 21.4 %** | **0 / 6,880 = 0.0 %** |
-| **B-WIN** op window vs dated-leaf-task window (`display_authored=1`) | ops `2026-09-10 22:59 .. 2027-07-17`, tasks `2026-01-01 .. 2026-11-26` → **233 d outside** | ops `2026-09-02 01:24 .. 2026-10-22`, tasks `2026-09-02 .. 2026-10-22` → **inside** |
-
-B-TE's detection power at a 21.4 % defect rate: a sample of **50** ops detects in **2000/2000** trials.
-Both clauses flag Hospital and neither flags a building whose ops are correct — which is the exact
-must/must-not the brief set. B-WIN alone would also have caught this DB, and it is the cheaper of the
-two (one `MIN/MAX` over 41 task rows + one pass over ops already parsed in memory).
-
-**CHOSEN: Option B, both clauses.** Reasons, in order: (1) it makes the stale decision a property of
-the DB rather than of a human remembering to bump a constant — which is what this section spent its
-whole trace establishing the defect to be; (2) A's blast radius is every building × every host's warm
-cache, to fix a defect measured in exactly one shipped DB; (3) A leaves the hole open for the next
-re-authoring, B closes the class. Two clauses rather than one because they are independent — a DB can
-freeze its calendar without shifting a bucket, or the reverse — and both are cheap.
-
-**R2. DESIGN (`viewer/time_machine.js`).**
-- `_schedOpsAgreementFail(db, placeOps)` — impure, does the DB reads, returns a short reason string or
-  `''`, logs `§KERNEL_OPS_SCHED_AGREE` with its own elapsed ms so the per-activate cost is measured by
-  the shipped code, not estimated. Clause B-WIN is armed only when `schedules.display_authored=1`
-  (that flag is the DB's own assertion that the task windows are views of these element times);
-  clause B-TE samples evenly and issues ONE `guid IN (…)` query, so cost is bounded regardless of
-  model size.
-- `_kernelOpsSchedStale(placeOps, currentVersion, agreementFail)` stays a PURE predicate (the third
-  argument is passed in, never read from a db/window inside), preserving
-  `witness_kernel_ops_sched_version.js`'s W-KOS-1/2/3 slice-and-call idiom. Version mismatch OR
-  agreement failure ⇒ stale.
-- The same predicate is applied to the IDB `gantt` fast path. `kernel_ops` has TWO HOMES (this
-  section's own trace) and the cache branch returns before the table branch is ever reached; gating
-  only one home would leave the other able to serve a frozen answer, and the narrowed acceptance
-  demands that the warm run agree with the cold one.
-- OUT OF SCOPE and untouched: the staging gate and its `GAP`/`EPS`, `_incrOK`/`setVisibleAt`,
-  §BATCH_BUCKET_CLASS_PAINT / the streaming bucket key, `cli_silent_bake.js`, the renderer, the ghost
-  ground plane, and the shipped `.db` files. **No data is rewritten.** The ops are re-DERIVED by the
-  shipped verb; nothing copies `task_elements` over them (the polarity trap: on the 13,546 one-storey
-  shifts the OP matches `elements_meta.storey` 7,491 times and `task_elements` 0).
-
-**R3. ACCEPTANCE (narrowed by the user to Hospital, and to PARITY between the two hosts).**
-The bar is no longer "the browser is right"; it is that the browser Alt+C bake and
-`cli_silent_bake.js` — which call the same verbs, `tmHasExistingSchedule` → `tmActivateForBake` →
-`activate` → `_activateAsync` — cannot play different timelines from the same `.db`. Four cells:
-browser cold, browser warm, silent cold, silent warm; each must show `§GANTT_SOURCE` ≥ 1,
-`§XRAY_EDGES staged=501/63415`, `map['0e8pm26Tv5vPrj6zU55MOH'] === undefined`, wall
-`3iM76qwej9Tf9ttHcbQrdG` → `TASK_Substructure_Level_1`, span `1/10/2026 → 11/26/2026`, and the Level 1
-deck visibly on screen. Plus a node/DB-only witness that fails on an INCREASE in ops whose `_task` has
-no `task_elements` row — `viewer/tests/witness_schedule_coherence.js`'s G-SC-TE, promoted from
-"reported" to BASELINE-gated.
-
-
-**§SCHED_TASK_BUCKET_SPLIT_BRAIN — MEASURED RESULT (2026-09-12). The fix fires and the floor is on
-time in both hosts; one pre-existing bake-side RACE is now reachable and is reported, not fixed.**
-Branch `fix/sched-ops-stale` off `origin/main@d993bc94`. Hospital only, per the narrowed scope.
-
-**The fix fires, and B-WIN is the clause that catches it** — in EVERY run, browser and bake:
-```
-§KERNEL_OPS_SCHED_AGREE ops=63415 winMs=2.6 teMs=0.0 totalMs=2.6 verdict=window
-    ops=2026-09-10..2027-07-17 tasks=2026-01-01..2026-11-26 (display_authored=1 asserts these are the same window)
-§KERNEL_OPS_SCHED_VERSION stale genVersion=39 current=39 agreementFail=window — cleared 63415 ops, will re-inject
-```
-**Added per-activate cost, measured by the shipped code, not estimated:** `2.4-2.9 ms` when a clause
-trips (B-WIN short-circuits before the sample query), `11.7-19.5 ms` when the ops AGREE and both
-clauses run in full (`winMs≈1.5-2.6` + `teMs≈9.9-17.0`). Against `§S4_ACTIVATION_TIMING_FINISH
-totalSinceActivate` of 650 ms for a frozen-ops open, that is ≈1.8 % of the cheapest possible open,
-and ≈0.2 % of the ~7,000 ms derive it replaces once.
-
-| cell | §GANTT_SOURCE | staged | slab in map | wall `_task` | span | deck |
-|---|---|---|---|---|---|---|
-| browser COLD (fresh profile, Alt+C → `#cpe-ok`) | present, `covered=63415 pct=100` | **501/63415** | undefined | `TASK_Substructure_Level_1` | 1/10/2026→11/26/2026 | drawn at `1769193000000`, absent at `1769100000000` |
-| browser WARM (same profile AND same origin) | absent — `§GANTT_CACHE_HIT ops=63418` instead | **501/63415** | undefined | `TASK_Substructure_Level_1` | 1/10/2026→11/26/2026 | same |
-| silent bake, run 2 | present, `covered=63415 pct=100`, `capActive=true` | **501/63415** | — | — | 1/10/2026→11/26/2026 | frame 38 = concrete deck, Day 15/321 |
-| silent bake, run 1 | **absent** (`§GANTT_CACHE_ERR`) | **498**/63415 | — | — | 1/10/2026→11/26/2026 | frame 38 = concrete deck, Day 15/321 |
-
-⚠ **The browser WARM cell has no `§GANTT_SOURCE` and that is correct, not a miss.** A warm open is
-served by `§GANTT_CACHE_HIT` and never runs `injectGantt`; what matters is that the cached ops are the
-CORRECT ones and pass the new agreement test (`verdict=agrees`), so the timeline is identical. Before
-this fix a Hospital cold open wrote no cache at all — the frozen-ops branch returns before
-`cachePut('gantt')` — so `§CACHE_PUT key=gantt:v39:Hospital size=29328KB` on the cold run is itself new
-and is what makes warm parity possible. ⚠ And a warm cell is only warm on the SAME ORIGIN: the first
-attempt at it used a different `--port`, which is a different IndexedDB origin, i.e. another cold run.
-
-**THE ONE FAILURE, AND IT IS NOT THIS FIX'S — a pre-existing race in the bake's cold derive.**
-Bake run 1 aborted mid-derivation:
-```
-§GANTT_CACHE_ERR undefined | phase=post-loadOps | stack=(none) | thrown type=string value=Statement closed
-§KRN_SEAL_FROM fromId=63417 sealed=63416      ← the async seal running DURING the chunked write
-(no §S4_ACTIVATION_TIMING_CAP, no §WRITE_LOOP_TIMING — _writeScheduledChunked never finished)
-§CPE_BUILDUP_SOURCE covered=2500/63415 pct=4% capActive=false   ← exactly ONE _TM_CHUNK of 2500 landed
-```
-`KernelOps.sealFrom` is `async` and issues a `db.run('UPDATE kernel_ops …')` per row; at Hospital's
-63,416 rows it interleaves with `_writeScheduledChunked`'s prepared statement (which yields a
-macrotask every 2,500 rows) and sql.js closes the statement under it. Evidence that it is a RACE and
-pre-existing, not a consequence of this change:
-1. **The same build produced both outcomes** — bake run 1 raced (`sealed=63416`, staged 498), bake run 2
-   on the same DB and command did not (`sealed=1`, no error, staged 501, `capActive=true`).
-2. **A control with this fix's code fully INERT still raced.** Forcing the cold path with a `--tap`
-   that empties `kernel_ops` before load (so `_schedOpsAgreementFail` early-returns and logs nothing
-   at all) still produced `Statement closed` and `staged=498`.
-3. **`main` reaches the identical late-DELETE cold path today** through its OWN version clause:
-   `HHS_Office_Federated_silent` (`_genVersion=38`) bakes with `§KERNEL_OPS_SCHED_VERSION stale
-   genVersion=38 current=39 — cleared 6880 ops` and `§KRN_SEAL_FROM sealed=6881` — the same collision
-   geometry, 10× smaller, so its 119 ms write never overlaps the seal.
-The seal timing is what decides it: clean runs seal at ~23.6 s (1 row, before the insert loop), raced
-runs seal at ~32.1 s (63,416 rows, mid-write). **Not fixed here — `KernelOps` sealing and the bake's
-activation ordering are outside this brief's scope, and the brief's stop condition says report, not
-widen.** It is the next thing to take, and it is a host-parity defect of exactly the same family as
-this section's: the same `.db` and the same verbs, decided by which async loop wins.
-
-**Left unchanged and re-measured on the shipped DB (the fix rewrites no data, so these are identical
-before and after):** `G-SC-SELF selfContradictory=39`, `G-SC-TE taskElementsMismatch=13574` (now the
-recorded `TE_BASELINE`; it reads 0 once the ops re-derive, measured in-page as
-`§A88_AGREE {"n":63415,"noTask":0,"bad":0}`), `G-SC-CARRY slabsWithLateCarriers=19 lateCarriers=60
-worst=55.55h`. The G-SC-CARRY number is a property of the FROZEN rows in the file and is not what the
-Time Machine now plays; the played number is `§XRAY_EDGES staged=501` (was 544).
+**⚠ ALSO OPEN — a pre-existing race the fix now REACHES.** `KernelOps.sealFrom` runs async per-row
+UPDATEs that collide with `_writeScheduledChunked`'s prepared statement: `§GANTT_CACHE_ERR ... type=string
+value=Statement closed`, 1 bake run in 4 on Hospital. Proven pre-existing (a control with the fix inert
+still raced; HHS takes the same path today and survives only because its write is 10× smaller). Not
+caused by #1727 — but #1727 routes Hospital down the derive path for the first time, so it turns a
+latent race into a 1-in-4 failure on the largest model. `sealFrom` dates from `0a8ef10b`, 2026-06-08.
