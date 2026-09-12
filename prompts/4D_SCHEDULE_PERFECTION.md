@@ -5616,3 +5616,178 @@ cannot correct a bad cached schedule by baking.
 
 **STILL OPEN, untouched by any of this:** JKR — 70 slabs with late carriers, 226 of them, worst
 257.30 h, with ZERO self-contradictory ops and no `kernel_ops` to blame.
+
+
+**§SCHED_TASK_BUCKET_SPLIT_BRAIN — RESOLUTION SPEC (2026-09-12, dedicated 4D session). Spec before
+code, per the repo's standing rules. Scope: make Hospital's frozen `kernel_ops` re-derive. Nothing else.**
+
+**R0. STEP 0 — the brief was re-verified from source and from a real browser before anything changed.**
+Both facts hold.
+
+*V1 — the gate, read out of `viewer/time_machine.js` on `origin/main` @ `d993bc94`:*
+```js
+:8721  function _kernelOpsSchedStale(placeOps, currentVersion) {
+:8722-3  return !!(placeOps && placeOps.length && placeOps[0].parameters &&
+             placeOps[0].parameters._genVersion !== currentVersion);
+:8595  var _GANTT_CACHE_VERSION = 39;   // §STOREY_DATUM_FRAME (2026-09-03)
+:8886  if (_kernelOpsSchedStale(_placeOps, _GANTT_CACHE_VERSION)) {   // the only call site
+```
+`Hospital_silent.db`: 63,415 `ELEMENT_PLACE` rows, `_genVersion` histogram `{39: 63415}` — every row,
+not a sample. 39 === 39 ⇒ `stale=false` ⇒ the table is adopted verbatim. **⚠ ONE PRECISION THE BRIEF
+OWES:** `_kernelOpsSchedStale` is the only *schedule*-staleness gate, but it is not the only gate on
+the table — `:8882` clears ops that lack `_end_ts` (a SCHEMA-SHAPE gate, and Hospital's rows have
+`_end_ts`, so it passes too). Nothing else inspects the persisted rows. `injectGantt()` is reached
+from `_activateAsync` only at `:8907`, inside `if (!_placeOps.length)`; the sole other reach is the
+`.catch()` fallback at `:8947`, itself gated `if (!_ops.length)`. Both require an EMPTY table.
+
+*V2 — forced re-derivation, reproduced in a headful-GPU browser (NVIDIA RTX 4060 via ANGLE gl-egl),
+`run_V2.log`, this session, on unmodified `origin/main`:* delete `ELEMENT_PLACE` in memory + drop the
+IDB `gantt` key, then `window.toggleTimeMachine()`:
+```
+§TM_OPS_CHECK total=3 place=0
+§GANTT_SOURCE captured tasks=41 covered=63415 generated=0 total=63415 pct=100
+§TIME_MACHINE ON — 63418 ops, 321 days, project: 1/10/2026 → 11/26/2026      ← tasks are 2026-01-01..2026-11-26
+§XRAY_EDGES n=38802 ms=183.9 staged=501/63415                                 ← was 544
+§A88_XRAY_PROBE_TMOPEN {"n":501,"staged":501,"solidified":0,"active":true,"ops":63418}   ← no `slab` key ⇒ map[0e8pm26…] === undefined
+wall 3iM76qwej9Tf9ttHcbQrdG  _task="TASK_Substructure_Level_1"   (frozen row said TASK_Architecture_Envelope_Level_1)
+§A88_SLAB_VIS cursor=1769100000000 {"slab":" batched:false"}     ← before its own _end_ts 1769192753996
+§A88_SLAB_VIS cursor=1769193000000 {"slab":" batched:true"}      ← after it: the deck draws
+§CACHE_PUT key=gantt:v39:Hospital size=29328KB                   ← the CORRECT ops are what gets cached
+```
+**Both V1 and V2 hold. The brief stands.** The defect is the staleness decision and nothing else.
+
+**R1. THE CHOICE — measured, not argued.**
+
+*Option A — bump `_GANTT_CACHE_VERSION` 39 → 40.*
+Cost of the re-derivation it forces, from this session's own `§S4_ACTIVATION_TIMING_FINISH` marks on
+the same machine and the same DB:
+
+| Hospital Time Machine open | `totalSinceActivate` | derivation ran? |
+|---|---|---|
+| frozen ops adopted (`run_A`, today's behaviour) | **650 ms** | no |
+| re-derived (`run_C` / `run_D`) | **8,043 / 7,047 ms** | yes (`afterInjectGantt` 7,029 / 5,963 ms) |
+
+So ≈ **+6.4 to +7.4 s, once**, then `§CACHE_PUT gantt:v40:…` makes every later open warm. The costs A
+carries that do not show in that number: the bump changes the IDB cache KEY, so it also discards every
+user's warm `gantt:v39:*` entry fleet-wide — including entries holding CORRECT ops — and it is a
+one-shot data patch wearing a code change's clothes: the next time a `tasks` table is re-authored
+after ops are captured (exactly the event §SCHED_TASK_BUCKET_SPLIT_BRAIN traced), the ops freeze again
+at v40 and the next human has to notice and bump again.
+
+*Option B — an agreement test: the persisted ops must still be TRUE OF the DB they sit in.*
+Both candidate clauses were measured offline against the shipped DBs before a line was written:
+
+| clause | Hospital_silent | HHS_Office_Federated_silent (ops already correct) |
+|---|---|---|
+| **B-TE** ops whose `_task` has no `task_elements` row for that guid | **13,574 / 63,415 = 21.4 %** | **0 / 6,880 = 0.0 %** |
+| **B-WIN** op window vs dated-leaf-task window (`display_authored=1`) | ops `2026-09-10 22:59 .. 2027-07-17`, tasks `2026-01-01 .. 2026-11-26` → **233 d outside** | ops `2026-09-02 01:24 .. 2026-10-22`, tasks `2026-09-02 .. 2026-10-22` → **inside** |
+
+B-TE's detection power at a 21.4 % defect rate: a sample of **50** ops detects in **2000/2000** trials.
+Both clauses flag Hospital and neither flags a building whose ops are correct — which is the exact
+must/must-not the brief set. B-WIN alone would also have caught this DB, and it is the cheaper of the
+two (one `MIN/MAX` over 41 task rows + one pass over ops already parsed in memory).
+
+**CHOSEN: Option B, both clauses.** Reasons, in order: (1) it makes the stale decision a property of
+the DB rather than of a human remembering to bump a constant — which is what this section spent its
+whole trace establishing the defect to be; (2) A's blast radius is every building × every host's warm
+cache, to fix a defect measured in exactly one shipped DB; (3) A leaves the hole open for the next
+re-authoring, B closes the class. Two clauses rather than one because they are independent — a DB can
+freeze its calendar without shifting a bucket, or the reverse — and both are cheap.
+
+**R2. DESIGN (`viewer/time_machine.js`).**
+- `_schedOpsAgreementFail(db, placeOps)` — impure, does the DB reads, returns a short reason string or
+  `''`, logs `§KERNEL_OPS_SCHED_AGREE` with its own elapsed ms so the per-activate cost is measured by
+  the shipped code, not estimated. Clause B-WIN is armed only when `schedules.display_authored=1`
+  (that flag is the DB's own assertion that the task windows are views of these element times);
+  clause B-TE samples evenly and issues ONE `guid IN (…)` query, so cost is bounded regardless of
+  model size.
+- `_kernelOpsSchedStale(placeOps, currentVersion, agreementFail)` stays a PURE predicate (the third
+  argument is passed in, never read from a db/window inside), preserving
+  `witness_kernel_ops_sched_version.js`'s W-KOS-1/2/3 slice-and-call idiom. Version mismatch OR
+  agreement failure ⇒ stale.
+- The same predicate is applied to the IDB `gantt` fast path. `kernel_ops` has TWO HOMES (this
+  section's own trace) and the cache branch returns before the table branch is ever reached; gating
+  only one home would leave the other able to serve a frozen answer, and the narrowed acceptance
+  demands that the warm run agree with the cold one.
+- OUT OF SCOPE and untouched: the staging gate and its `GAP`/`EPS`, `_incrOK`/`setVisibleAt`,
+  §BATCH_BUCKET_CLASS_PAINT / the streaming bucket key, `cli_silent_bake.js`, the renderer, the ghost
+  ground plane, and the shipped `.db` files. **No data is rewritten.** The ops are re-DERIVED by the
+  shipped verb; nothing copies `task_elements` over them (the polarity trap: on the 13,546 one-storey
+  shifts the OP matches `elements_meta.storey` 7,491 times and `task_elements` 0).
+
+**R3. ACCEPTANCE (narrowed by the user to Hospital, and to PARITY between the two hosts).**
+The bar is no longer "the browser is right"; it is that the browser Alt+C bake and
+`cli_silent_bake.js` — which call the same verbs, `tmHasExistingSchedule` → `tmActivateForBake` →
+`activate` → `_activateAsync` — cannot play different timelines from the same `.db`. Four cells:
+browser cold, browser warm, silent cold, silent warm; each must show `§GANTT_SOURCE` ≥ 1,
+`§XRAY_EDGES staged=501/63415`, `map['0e8pm26Tv5vPrj6zU55MOH'] === undefined`, wall
+`3iM76qwej9Tf9ttHcbQrdG` → `TASK_Substructure_Level_1`, span `1/10/2026 → 11/26/2026`, and the Level 1
+deck visibly on screen. Plus a node/DB-only witness that fails on an INCREASE in ops whose `_task` has
+no `task_elements` row — `viewer/tests/witness_schedule_coherence.js`'s G-SC-TE, promoted from
+"reported" to BASELINE-gated.
+
+
+**§SCHED_TASK_BUCKET_SPLIT_BRAIN — MEASURED RESULT (2026-09-12). The fix fires and the floor is on
+time in both hosts; one pre-existing bake-side RACE is now reachable and is reported, not fixed.**
+Branch `fix/sched-ops-stale` off `origin/main@d993bc94`. Hospital only, per the narrowed scope.
+
+**The fix fires, and B-WIN is the clause that catches it** — in EVERY run, browser and bake:
+```
+§KERNEL_OPS_SCHED_AGREE ops=63415 winMs=2.6 teMs=0.0 totalMs=2.6 verdict=window
+    ops=2026-09-10..2027-07-17 tasks=2026-01-01..2026-11-26 (display_authored=1 asserts these are the same window)
+§KERNEL_OPS_SCHED_VERSION stale genVersion=39 current=39 agreementFail=window — cleared 63415 ops, will re-inject
+```
+**Added per-activate cost, measured by the shipped code, not estimated:** `2.4-2.9 ms` when a clause
+trips (B-WIN short-circuits before the sample query), `11.7-19.5 ms` when the ops AGREE and both
+clauses run in full (`winMs≈1.5-2.6` + `teMs≈9.9-17.0`). Against `§S4_ACTIVATION_TIMING_FINISH
+totalSinceActivate` of 650 ms for a frozen-ops open, that is ≈1.8 % of the cheapest possible open,
+and ≈0.2 % of the ~7,000 ms derive it replaces once.
+
+| cell | §GANTT_SOURCE | staged | slab in map | wall `_task` | span | deck |
+|---|---|---|---|---|---|---|
+| browser COLD (fresh profile, Alt+C → `#cpe-ok`) | present, `covered=63415 pct=100` | **501/63415** | undefined | `TASK_Substructure_Level_1` | 1/10/2026→11/26/2026 | drawn at `1769193000000`, absent at `1769100000000` |
+| browser WARM (same profile AND same origin) | absent — `§GANTT_CACHE_HIT ops=63418` instead | **501/63415** | undefined | `TASK_Substructure_Level_1` | 1/10/2026→11/26/2026 | same |
+| silent bake, run 2 | present, `covered=63415 pct=100`, `capActive=true` | **501/63415** | — | — | 1/10/2026→11/26/2026 | frame 38 = concrete deck, Day 15/321 |
+| silent bake, run 1 | **absent** (`§GANTT_CACHE_ERR`) | **498**/63415 | — | — | 1/10/2026→11/26/2026 | frame 38 = concrete deck, Day 15/321 |
+
+⚠ **The browser WARM cell has no `§GANTT_SOURCE` and that is correct, not a miss.** A warm open is
+served by `§GANTT_CACHE_HIT` and never runs `injectGantt`; what matters is that the cached ops are the
+CORRECT ones and pass the new agreement test (`verdict=agrees`), so the timeline is identical. Before
+this fix a Hospital cold open wrote no cache at all — the frozen-ops branch returns before
+`cachePut('gantt')` — so `§CACHE_PUT key=gantt:v39:Hospital size=29328KB` on the cold run is itself new
+and is what makes warm parity possible. ⚠ And a warm cell is only warm on the SAME ORIGIN: the first
+attempt at it used a different `--port`, which is a different IndexedDB origin, i.e. another cold run.
+
+**THE ONE FAILURE, AND IT IS NOT THIS FIX'S — a pre-existing race in the bake's cold derive.**
+Bake run 1 aborted mid-derivation:
+```
+§GANTT_CACHE_ERR undefined | phase=post-loadOps | stack=(none) | thrown type=string value=Statement closed
+§KRN_SEAL_FROM fromId=63417 sealed=63416      ← the async seal running DURING the chunked write
+(no §S4_ACTIVATION_TIMING_CAP, no §WRITE_LOOP_TIMING — _writeScheduledChunked never finished)
+§CPE_BUILDUP_SOURCE covered=2500/63415 pct=4% capActive=false   ← exactly ONE _TM_CHUNK of 2500 landed
+```
+`KernelOps.sealFrom` is `async` and issues a `db.run('UPDATE kernel_ops …')` per row; at Hospital's
+63,416 rows it interleaves with `_writeScheduledChunked`'s prepared statement (which yields a
+macrotask every 2,500 rows) and sql.js closes the statement under it. Evidence that it is a RACE and
+pre-existing, not a consequence of this change:
+1. **The same build produced both outcomes** — bake run 1 raced (`sealed=63416`, staged 498), bake run 2
+   on the same DB and command did not (`sealed=1`, no error, staged 501, `capActive=true`).
+2. **A control with this fix's code fully INERT still raced.** Forcing the cold path with a `--tap`
+   that empties `kernel_ops` before load (so `_schedOpsAgreementFail` early-returns and logs nothing
+   at all) still produced `Statement closed` and `staged=498`.
+3. **`main` reaches the identical late-DELETE cold path today** through its OWN version clause:
+   `HHS_Office_Federated_silent` (`_genVersion=38`) bakes with `§KERNEL_OPS_SCHED_VERSION stale
+   genVersion=38 current=39 — cleared 6880 ops` and `§KRN_SEAL_FROM sealed=6881` — the same collision
+   geometry, 10× smaller, so its 119 ms write never overlaps the seal.
+The seal timing is what decides it: clean runs seal at ~23.6 s (1 row, before the insert loop), raced
+runs seal at ~32.1 s (63,416 rows, mid-write). **Not fixed here — `KernelOps` sealing and the bake's
+activation ordering are outside this brief's scope, and the brief's stop condition says report, not
+widen.** It is the next thing to take, and it is a host-parity defect of exactly the same family as
+this section's: the same `.db` and the same verbs, decided by which async loop wins.
+
+**Left unchanged and re-measured on the shipped DB (the fix rewrites no data, so these are identical
+before and after):** `G-SC-SELF selfContradictory=39`, `G-SC-TE taskElementsMismatch=13574` (now the
+recorded `TE_BASELINE`; it reads 0 once the ops re-derive, measured in-page as
+`§A88_AGREE {"n":63415,"noTask":0,"bad":0}`), `G-SC-CARRY slabsWithLateCarriers=19 lateCarriers=60
+worst=55.55h`. The G-SC-CARRY number is a property of the FROZEN rows in the file and is not what the
+Time Machine now plays; the played number is `§XRAY_EDGES staged=501` (was 544).
