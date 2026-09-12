@@ -5033,3 +5033,58 @@ real `viewer/rule_checklist.js` SOURCE, that both `A._ruleTintAt =` and `A.ruleT
 still defined there — the cheapest possible guard on a dependency that only a merge can break, and
 the one that disproves this exact regression. A witness that mocks a collaborator must also assert
 the collaborator still exists.
+
+## §90 THE CLOSING STOREY REVEAL — NOT BROKEN, NEVER SWITCHED ON, AND ITS REAL PROBLEM IS THAT
+## NOBODY CAN SEE IT (2026-09-13, brief for a NEW session)
+
+**90.1 FIRST, THE BORING PART — v87 baked with the reveal OFF.** Not a code defect:
+```
+v86  storeyReveal=1   STOREY_REVEAL_LIST=1  TINT=8  TIMING=8  STATS=8
+v87  storeyReveal=0   STOREY_REVEAL_LIST=0  TINT=0  TIMING=0  STATS=0   (FIT=8 WINDOW=8 — the
+                                                                         window still computes)
+```
+`cpe_storey_reveal.js` loads, `§STOREY_REVEAL_FIT`/`_WINDOW` compute normally; the visual simply never
+arms because the flag was off. `Hospital_FULL_1080p_v87c.mp4` was baked `--measure --fps 24` with no
+`--storey-reveal`, and the stored path has it off. **Re-bake with `--storey-reveal` and expect v86's
+`LIST=1 TINT=8 TIMING=8 STATS=8` back.** Do that before touching anything — it costs one bake and it
+is the whole of this symptom.
+
+**90.2 THE REAL PROBLEM, MEASURED ON v86 — the reveal happens where nothing can see it.**
+v86 DID run the reveal, and it still reads as nothing. From its own log the beat is real:
+```
+§STOREY_REVEAL_LIST n=8 storeys=[Level 1..Level 7]
+§STOREY_REVEAL_FIT windowSec=10.04 minSlotSec=1 storeysAvailable=8 shown=8 slotSec=1.25 (all storeys fit)
+§STOREY_REVEAL_TINT storey="Level 1" color=#2979ff meshesTouched=19 clonedMaterials=0
+§STOREY_REVEAL_STATS storey="Level 1" doors=114 walkable=6481m2 footprint=98.6x90.3m rooms=4 compiled
+```
+but the frame at that exact moment (v86 frame 4276, `tNorm=0.9078`) shows **a solid building from
+outside, with no blue anywhere**. Level 1 is the GROUND floor: its 19 tinted meshes are behind the
+facade and under six storeys of roof. The stat card lands, the tint does not. Same for every lower
+storey; only the top one or two can possibly show.
+
+**90.3 WHY THE OBVIOUS FIX IS ALREADY RULED OUT.** Do not reach for x-ray — §55.1/§55.2 tried and
+retired it: `A._matCache`'s key has no storey component, so instanced/batched materials are SHARED
+across storeys and true per-storey x-ray is infeasible; darken-above was abandoned after two tuning
+passes because instanced tint is per-instance ALBEDO, not emissive, so a face turned from the sun
+stays dark regardless. §FACADE_ONLY_TINT shipped instead — tint only that storey's exterior walls —
+which is why an orbiting camera sees anything at all. **The unsolved half is the storeys whose facade
+is small or occluded, and the interior the stat card is describing.**
+
+**90.4 WHAT TO PURSUE, IN THE ORDER THAT COSTS LEAST.**
+1. **Re-bake with `--storey-reveal` and LOOK.** Decide from real frames how much of each storey's
+   facade tint actually reads at the reveal camera's distance. Quote frames, not adjectives.
+2. **The camera, not the material.** The reveal currently plays during the pull-out orbit
+   (`windowStartFrac=0.9077`, `orbitStartFrac=0.9590`) — one fixed exterior arc for all 8 storeys.
+   A section cut, a per-storey camera that drops to that floor, or an exploded/offset lift are all
+   things the codebase can already express and none of them need the shared-material problem solved.
+3. **1.25 s per storey is the real budget.** 8 storeys in a 10.04 s window of a 195.8 s film. Whatever
+   is designed has to be legible in 1.25 s — that constraint, not the tint colour, is what makes this
+   a wow beat or a blink.
+4. **The stat card already works.** `doors=114 walkable=6481m2 footprint=98.6x90.3m rooms=4` lands
+   every time. If the geometry cannot be made to read, consider whether the card carrying the beat —
+   with the storey named and the building silhouetted — is the honest version of this effect.
+
+**90.5 DO NOT RE-TEST.** §STOREY_REVEAL_XRAY is dead code in this build (0 lines, §55.1). The reveal
+window arithmetic is correct (`realWindowSec=10.04 = windowFrac 0.0513 × 195.8 s`). `meshesTouched`
+is non-zero for every storey, so the tint is finding its geometry — the problem is sightline, not
+selection.
