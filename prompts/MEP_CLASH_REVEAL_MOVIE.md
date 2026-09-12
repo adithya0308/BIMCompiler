@@ -5193,15 +5193,21 @@ both      §WHY_HIDDEN xray staged=544 n=544 solidifyTsForGuid=1789798254510
    AND at Day 310. §BATCH_BUCKET_CLASS_PAINT did not create the bug; it removed the accident that
    was hiding it. **It is a correct change sitting on top of an incorrect one.**
 
-**88.7d WHAT TO FIX, IN THIS ORDER.**
-1. **`_buildXraySupportCache` must not stage a ground-bearing slab.** `§GROUND_CONNECTED`/
-   `§PROMOTED_CARRIER_POOL` already treat seq-1 ground-bearing elements as exempt; the same exemption
-   belongs here — an element whose `base_z` is at the `§GROUND_Y` datum (±EPS) bears on ground, not on
-   a carrier. Witness it by asserting `_tmXraySolidifyTs[<L1 slab guid>] === undefined` on Hospital.
-2. **Only then** is §BATCH_BUCKET_CLASS_PAINT safe to merge. Merging it first ships the missing floor.
+**88.7d WHAT TO FIX, IN THIS ORDER — SUPERSEDED IN PART, read this before acting on it.**
+Item (1) below was written before §88.8/§88.9 found the real cause and is **WRONG**: the staging gate
+is not misfiring and a ground-bearing exemption would only paper over a real schedule inversion. The
+carrier is genuine and it genuinely finishes late. Kept, struck through, because the wrong idea is
+instructive — two sessions would have "fixed" §88 by teaching the gate to ignore exactly the case it
+exists to catch. Items (2) and (3) stand.
+1. ~~`_buildXraySupportCache` must not stage a ground-bearing slab.~~ **NO** — see
+   `prompts/4D_SCHEDULE_PERFECTION.md` §SCHED_TASK_BUCKET_SPLIT_BRAIN. The fix is the task-bucket
+   classifier, not the gate.
+2. **Only then** is §BATCH_BUCKET_CLASS_PAINT safe to merge. Merging it first ships the missing floor,
+   because it removes the accident (§88.7c(2)) that is currently drawing the slab anyway.
 3. **Separately**: the `_incrOK` skip leaving a stale `setVisibleAt` is a correctness hole of its own —
-   it is what made a 13.5-hour mis-stage invisible for however long it has been there. Whatever the
-   ruling on (1), a gate that only applies when the batch happens to be touched is not a gate.
+   it is what kept a real schedule inversion off the screen for however long it has been in the data.
+   A gate that only applies when the batch happens to be touched is not a gate. Note the direction it
+   cuts: fixing the skip WITHOUT fixing the schedule also makes the floor disappear.
 
 **88.7e ALSO MEASURED, AND CLEARED — do not re-test.** `§BM_BOUNDS_CULL`'s stale sphere is real on
 this slab (stored `r=62.251` vs true `r=66.834`, a **4.583 m** shortfall) but
@@ -5212,183 +5218,18 @@ Census: Hospital has **0** single meshes carrying a guid — 38,169 BatchedMesh 
 InstancedMesh slots — so any §88-class question must be asked of the batched branches, never the
 single-mesh one.
 
-**88.8 THE UPSTREAM CAUSE — the ground slab is built BEFORE its own foundation walls.**
-*(User: "What was the cause of it before this?" §88.7 named the mechanism that put the mis-stage on
-screen; this is what creates the mis-stage in the first place. Corrects §88.7c(1)'s guess that
-`_buildXraySupportCache` was inventing a carrier — it is not. The carrier is real.)*
 
-Exactly ONE op in all 63,415 ends at the slab's solidify time `1789798254510`:
-
-```
-3iM76qwej9Tf9ttHcbQrdG  IfcWallStandardCase  "Basic Wall:Foundation - 375mm Concrete w_ste…"
-  storey=Level 1  phase=Substructure  base_z=164.644  top_z=166.144
-  rank 864/63415   start 2026-09-19 05:57   end 2026-09-19 06:10
-0e8pm26Tv5vPrj6zU55MOH  IfcSlab  the 8,899 m² ground slab
-  storey=Level 1  phase=Superstructure  base_z=165.361  top_z=165.811
-  rank 805/63415   start 2026-09-18 16:37   end 2026-09-18 16:42
-                                            → gap = 13.47 hours
-```
-
-It qualifies as a carrier on every clause and needs no roof-load-path promotion: `rates.js`'s
-`foundation_wall_substructure` override ("a wall NAMED Foundation is substructure") gives it
-**sequence 1**, so it lands in `structGrid`, not `wallGrid`. `base_z 164.644 < 165.361−EPS` and
-`top_z 166.144 ≥ 165.361−GAP` put it under the slab; `166.144 ≤ topBound 166.311` make it
-IN-EXTENT, so it sets `maxCarrierEnd`. And it is not alone: **20 of 20** in-extent wall carriers
-beneath that slab finish AFTER it.
-
-**So §XRAY_STAGING_REMOVED is not misfiring. It is correctly reporting that the captured schedule
-pours an 8,899 m² ground-floor slab 13.5 hours before the foundation walls it bears on.**
-`Superstructure — Level 1` finishing ahead of `Substructure — Level 1` for the same storey is the
-defect; the invisible floor is the gate honestly refusing to draw an unsupported element.
-
-⚠ **Why §88.6c's offline check said "not staged" and was wrong.** That re-implementation mapped
-`IfcWallStandardCase` to the class-table default (seq 6) and so routed these walls to `wallGrid`,
-which is only consulted for promoted slabs — excluding the very carriers that matter. It missed
-`SEQUENCE_NAME_OVERRIDES` entirely. A re-typed copy of a shipped predicate tests itself, not the
-code — the same lesson `witness_batch_bucket_class_paint.js` states in its own header (W-BBCP-5,
-"⚠ THE KEY IS SLICED OUT OF viewer/streaming.js AND EVALUATED, NEVER RE-TYPED HERE"). The runtime
-`__tmXrayProbe('map')` number is the one to trust.
-
-**88.8a REVISED FIX ORDER, replacing §88.7d.**
-1. **Fix the schedule, not the gate.** `Substructure — Level 1`'s foundation walls must finish
-   before `Superstructure — Level 1`'s ground slab. Witness: for every IfcSlab, no in-extent
-   structGrid carrier may have `end_ts` greater than the slab's — asserted per building, with the
-   count of violations reported, not averaged away. Hospital's current count for this one slab is
-   20/20.
-2. **Only then** merge §BATCH_BUCKET_CLASS_PAINT. Merging it first ships the missing floor, because
-   it removes the accident (§88.7c(2)) that is currently drawing the slab anyway.
-3. **Independently**, the `_incrOK` skip leaving a stale `setVisibleAt(true)` is its own correctness
-   hole — it is what kept a real, 13.5-hour schedule inversion off the screen for however long it
-   has been in the data. A gate that only applies when the batch happens to be touched is not a gate.
-   Note the direction this cuts: fixing the skip WITHOUT fixing (1) also makes the floor disappear.
-
-**88.9 THE ACTUAL CAUSE — 28 foundation walls are filed under the wrong TASK, and only those 28.**
-*(User: "I prefer you identify the actual cause and grasp why it happened." §88.8 said "the schedule
-is inverted", which is a restatement, not a cause. This is the cause.)*
-
-The model is RIGHT. `tasks` carries the correct order and `task_elements` carries the correct link:
-
-```
-TASK_Substructure_Level_1     2026-01-01 .. 2026-01-12   ← the foundation walls belong here
-TASK_Superstructure_Level_1   2026-01-12 .. 2026-01-25   ← the 8,899 m² ground slab
-task_elements(3iM76qwej9Tf9ttHcbQrdG) = TASK_Substructure_Level_1     ✓ correct
-```
-
-The persisted `kernel_ops` row for that same wall says otherwise:
-
-```
-_task:    "TASK_Architecture_Envelope_Level_1"     ✗  — a task that runs AFTER Superstructure
-taskName: "Architecture Envelope — Level 1"
-phase:    "Substructure"        ← the name-override DID land here
-_cell:    "L0·T1·L0"            ← …and here: T1 = sequence 1, substructure trade
-```
-
-**One element, two different phase answers.** `rates.js`'s `foundation_wall_substructure` override
-("a wall NAMED Foundation is substructure", `sequence: 1`) reached the op's `phase`/`seq`/`_cell`
-fields but NOT its task bucket, which was taken from the plain class table
-(`IfcWallStandardCase → 'Architecture Envelope'`). The support predicate reads the seq-1 answer, so
-the wall counts as a structural carrier; the timing reads the Architecture-Envelope answer, so it is
-poured after the slab it carries. Same family as §GANTT_PHASE_CLOBBER — two fields that must agree,
-and one lane not being told.
-
-**How wrong, exactly — audited across all 63,415 ops against `task_elements`:**
-
-| `_task` vs `task_elements` | count | share |
-|---|---|---|
-| agrees | 49,841 | 78.6 % |
-| **phase shift only** | **28** | 0.04 % |
-| storey shift only | 13,546 | 21.4 % |
-
-**Every one of the 28 phase shifts is the same shift** — `Substructure → Architecture_Envelope` —
-and every one is a Level 1 `Basic Wall:Foundation - 375mm Concrete w_step`. That is the entire
-population of this bug, and 20 of the 28 sit in-extent under the ground slab.
-
-**The timing follows the wrong task, not the right one.** All 28 walls' op starts fall inside
-Architecture-Envelope-L1's element envelope (`09-19 00:00 .. 10-06 23:18`), none inside
-Substructure-L1's (`09-10 22:59 .. 09-13 06:27`). Filed correctly they would finish **5.4 days
-before** the slab (`09-13 06:27` vs slab end `09-18 16:42`) and `_buildXraySupportCache` would have
-had nothing to stage. Filed as they are, `maxCarrierEnd` lands 13.47 h past the slab and the gate
-hides an 8,899 m² floor.
-
-**And the bake cannot correct it.** `§CPE_BUILDUP_SOURCE … capActive=false` — the captured
-re-injection does not re-run; `injectGantt`'s `_cap.guidTask` join (which reads `task_elements`
-directly and would have produced the right bucket) is bypassed, and the film replays the persisted
-`kernel_ops` timestamps verbatim. The misassignment was baked into the DB at `_genVersion: 39` and
-every bake since has replayed it.
-
-**88.9a THE FIX IS ONE LANE, NOT THE GATE.** Task-bucket assignment must use the SAME classifier
-result the `phase`/`seq`/`_cell` fields already use — i.e. `matchRule(cls, name)` including
-`SEQUENCE_NAME_OVERRIDES`, or better, `task_elements` itself, which is already correct here and
-which `_cap.guidTask` already reads. Witness: for every op, `params._task` must equal a
-`task_elements` row for that guid; Hospital's current failure count is **13,574** (28 phase, 13,546
-storey). Nothing in §88 needs the staging gate, the ghost plane, the bucket key or the Time Machine
-to change.
-
-**88.9b SEPARATE, LARGER, NOT THE §88 CAUSE — the 13,546 storey shifts.** They are near-uniformly
-**one storey upward** (`Architecture_Envelope_Level_4` where `task_elements` says `Level_3`,
-`MEP_Rough_in_Level_5` → `Level_4`, `Superstructure_Level_2` → `Level_1`). That is an off-by-one in
-the storey ladder used at op-generation time, and §STOREY_DATUM_FRAME (`f289da6b`, #1641) plus the
-v86 log's own `§FLYTHRU_DATUM_ZDATUM levels=0.00..34.00 elements=156.61..203.62 offset=165.81m
-(levels were in a LOCAL datum)` are where to start. It does not cause the missing floor — the
-foundation walls are in the 28, not the 13,546 — but it means a fifth of this film's elements are
-playing in the wrong storey's bar.
-
-**88.10 THE INJECTION NEVER RUNS — and the bake is NOT the one at fault.**
-*(User: "doesn't it get Time Machine 4D timeline one time injection first? … Silent bake must follow
-suit and not invent a different setting. So be sure why it also not hard fail when it has no
-schedule info." Three questions, three measured answers. The second one clears the bake entirely.)*
-
-**88.10a THE BAKE INVENTS NOTHING — it runs the shipped verb.** `cli_silent_bake.js` calls
-`window.tmActivateForBake()`, which calls the same `activate(true)` → `_activateAsync` a real Time
-Machine open calls; the only difference is `silent` (no panel). Proof that both land on the same
-branch — the identical line, same numbers, in the v86 branch bake and in a `main` clip bake:
-```
-§TM_OPS_CHECK total=63415 place=63415
-```
-There is no separate bake schedule path to blame. Whatever the browser would do here, the bake did.
-
-**88.10b …AND WHAT BOTH DO IS SKIP THE INJECTION.** In `_activateAsync`, `injectGantt()` is inside
-`if (!_placeOps.length)`. `Hospital_silent.db` SHIPS with 63,415 persisted `ELEMENT_PLACE` rows, so
-that branch is never entered. Measured across every bake in this session and the v86 one:
-
-```
-§GANTT_SOURCE      0 lines      ← injectGantt never ran, captured OR generated
-§GANTT_CACHE_HIT   0 lines      ← not the IDB fast path either (fresh --profile, empty IDB)
-§TM_OPS_CHECK      place=63415  ← the persisted table was simply adopted
-```
-
-This is also why `§CPE_BUILDUP_SOURCE … capActive=false`: `_capActive` is set inside injectGantt's
-captured branch, and that branch never executed. `injectGantt`'s `_cap.guidTask` join — which reads
-`task_elements` directly and would have put those 28 foundation walls back in
-`TASK_Substructure_Level_1` — is bypassed on every open, in the browser as much as in the bake.
-
-**88.10c THE GATE THAT SHOULD HAVE CAUGHT IT CHECKS THE WRONG THING.** The only staleness test on
-that persisted table is
-```js
-function _kernelOpsSchedStale(placeOps, currentVersion) {
-  return !!(… placeOps[0].parameters._genVersion !== currentVersion);
-}
-var _GANTT_CACHE_VERSION = 39;   // §STOREY_DATUM_FRAME (2026-09-03)
-```
-The ops carry `_genVersion: 39`; current is 39 → **not stale**, adopted verbatim. That stamp answers
-"were these ops produced by the current ALGORITHM?" It never asks "do these ops still agree with
-`tasks` / `task_elements`?" So a misassignment, once written, is immortal until a human bumps the
-constant — and §88.9's 28 walls have been replayed by every bake since.
-
-**88.10d CORRECTION TO §88.9b — the two disagreements have OPPOSITE polarity.** Checked each
-mismatched op's task storey against the element's own `elements_meta.storey`:
-
-| mismatch class | count | which side matches the element's own storey |
-|---|---|---|
-| phase shift (`Substructure → Architecture_Envelope`) | 28 | **`task_elements` is right**, the op is wrong |
-| storey shift (one level up) | 13,546 | **the op is right** (7,491 exact matches), `task_elements` matches **0** |
-
-So `task_elements` is the stale side on the storey axis (a `materializeZones` band artifact), and the
-op is the stale side on the phase axis. **"Just re-derive from `task_elements`" is therefore the
-WRONG fix** — it would repair the 28 and break 13,546. §88.9a is amended accordingly: fix the
-classifier, not the source. The task bucket must be chosen with the SAME `matchRule(cls, name)`
-result (including `SEQUENCE_NAME_OVERRIDES`) that already produced `phase: "Substructure"` and
-`_cell: "L0·T1·L0"` on those very ops.
+**88.8 THE CAUSE IS A TIMELINE DEFECT AND HAS BEEN MOVED — see
+`prompts/4D_SCHEDULE_PERFECTION.md` §SCHED_TASK_BUCKET_SPLIT_BRAIN.**
+*(User ruling, 2026-09-12: "Any timeline bug (which was clean prior) has to confine to the dedicated
+prompts/# governing it." This file owns the film; it does not own the schedule.)*
+In one line, so §88 is readable without the jump: **28 Level 1 "Foundation" walls carry
+`phase='Substructure'` and `_cell='L0·T1·L0'` while their `_task` says `Architecture_Envelope`** —
+a bucket that runs AFTER the slab they carry. 20 are in-extent carriers under it, finishing 13.47 h
+late, so `_buildXraySupportCache` stages the slab and §XRAY_STAGING_REMOVED correctly refuses to draw
+an unsupported floor. Whether a viewer SEES that refusal is §88.7's batching question, which is this
+file's business. Everything upstream of it — the misassignment, why `injectGantt` never re-derives
+it, and the fleet numbers — is in the 4D file.
 
 **88.10e IT DOES NOT HARD-FAIL WITH NO SCHEDULE, AND THAT IS A SEPARATE BUG.** Trace the no-timeline
 path: `injectGantt()` false → `§TIME_MACHINE no ops and no elements` → `activate` resolves false →
@@ -5404,30 +5245,6 @@ the bake proceeds. A run that was ASKED for `--buildup` and silently delivered a
 should set `S.fatal` and exit non-zero, exactly as R7/§80.1 require elsewhere — "exit code alone is
 not evidence" cuts both ways, and here the exit code is actively misleading.
 
-**88.11 NO — §88.9's CAUSE STANDS, and it is now provable WITHOUT `task_elements`.**
-*(User: "Does this mean we mistaken our earlier ground slab bug cause?")* §88.10d raised a fair
-doubt: if `task_elements` is the stale side on the storey axis, why trust it on the phase axis? The
-answer is that we no longer need to. Comparing each op's OWN `phase` field against its OWN `_task`
-bucket (normalised), across all 63,415:
-
-```
-ops whose own phase contradicts their own _task bucket:  39 / 63,415
-   28   phase='Substructure'   vs  _task='Architecture_Envelope'   ← §88.9's foundation walls
-   11   phase='Architecture'   vs  _task='Superstructure'
-```
-
-**39 self-contradictory ops in the whole schedule, and 28 of them are the Level 1 foundation walls.**
-The op says Substructure in `phase`, Substructure in `_cell` (`L0·T1·L0`, tier 1), and
-Architecture Envelope in `_task`. That is internal inconsistency, not a disagreement between two
-sources — so no judgement about which table is authoritative is required, and §88.10d's polarity
-finding does not touch it. The 13,546 storey shifts remain an op-vs-`task_elements` disagreement
-where the op is the better witness; the 28 phase shifts are the op contradicting itself.
-
-**Nothing in §88.6-§88.9 changes.** The chain is unaltered: 28 walls mis-bucketed → 20 of them
-in-extent carriers finishing 13.47 h after the ground slab → `_buildXraySupportCache` stages the slab
-→ §XRAY_STAGING_REMOVED hides it → visible or not depending on batching (§88.7). §88.10 explains why
-the misassignment is immortal, not who caused it.
-
 **88.12 SCOPE RULING (user, 2026-09-12): "Don't touch browser base ops as it needs deeper history.
 You can only fix silent bake side."** So `injectGantt`, `_activateAsync`, `_kernelOpsSchedStale`,
 `_GANTT_CACHE_VERSION` and the persisted `kernel_ops` generation are OUT OF SCOPE — the 39
@@ -5438,10 +5255,14 @@ and report. Two changes, both in `cli_silent_bake.js`, neither touching the view
   then got `§CLI_BAKE_TM_PRIME FAILED`/`no-hook`, or that sees `§CPE_BUILDUP_ARM_GATE timeout` in the
   frame stream, must abort non-zero instead of delivering a film with the buildup silently dropped.
   Today it logs one ⚠ and exits 0 because `S.fatal` is only set by `§MAXQ_FAIL` / `--max-frame-ms`.
-- **§CLI_BAKE_SCHED_COHERENCE (read-only).** One line, after load, counting what the bake is about
-  to replay: total ops, ops whose own `phase` contradicts their own `_task`, and ops whose `_task`
-  has no matching `task_elements` row. Pure SELECTs against `APP.db` — **it repairs nothing and
-  writes nothing**. Its whole job is that §88's 28 walls would have had a number in the log from the
-  first bake instead of costing four sessions. Non-zero is reported, never fatal: on Hospital the
-  honest counts are 39 and 13,574, and a bake must not start refusing films over a pre-existing
-  condition it has been shipping for weeks.
+- **§CLI_BAKE_SCHED_COHERENCE — TRIED IN THE BAKE, THEN REMOVED.** *(User, same day: "AFAIK, bake
+  follows 4D timeline and not has extra script to it.")* Correct, and the first attempt broke it: a
+  page-evaluate SQL audit inside `cli_silent_bake.js`. The bake PLAYS the timeline; it is not the
+  place to grow a second opinion about it — and an audit living there would have had to RE-TYPE the
+  phase/task semantics, the exact "a re-typed predicate tests itself" trap §88.9 was itself caught
+  by. Reverted (47 lines out). The audit now ships as a node witness,
+  `viewer/tests/witness_schedule_coherence.js` (W-SCHED-COHERE), and its findings belong to
+  `prompts/4D_SCHEDULE_PERFECTION.md` §SCHED_TASK_BUCKET_SPLIT_BRAIN, not here.
+
+**So the only change this file's lane owns is §CLI_BAKE_FAIL_NO_TIMELINE** — the bake reporting its
+OWN failure honestly. Everything about the schedule it replays is the 4D lane's.
