@@ -5402,7 +5402,15 @@ footprint rather than a 2-to-51-mesh facade subset, so the cut removes the failu
 tuning around it. Do not "fix" LAST_STAYS_LIT separately.
 
 **94.7 TEST MATRIX — all three silent DBs, low res for quick optics (user's instruction).**
-`--clip 0.900:0.962 --storey-reveal --gpu real --width 854 --height 480`, each through
+**THE REVEAL WINDOW FRACTION IS PER-BUILDING — READ IT BEFORE CHOOSING A CLIP.** This cost a wasted
+bake on 2026-09-13: `--clip 0.900:0.962` is Hospital's window
+(`windowStartFrac=0.9077 orbitStartFrac=0.9590`, windowFrac 0.0513) and on Terminal it baked the
+ORBIT instead — Terminal's own line reads `windowFrac=0.1139 orbitStartFrac(rise)=0.8390
+windowStartFrac=0.7252`, more than twice as wide and 18 points earlier. The window is derived from
+each building's own beat pacing, so the procedure is: run any short clip first, read
+`§STOREY_REVEAL_WINDOW ... windowStartFrac=/orbitStartFrac=` out of the log, THEN clip to that.
+Known so far: Hospital `0.9077..0.9590`, Terminal `0.7252..0.8390`.
+Otherwise `--storey-reveal --gpu real --width 854 --height 480`, each through
 `./bake_scope.sh` (§91.4), each DB symlinked into the worktree's `buildings/` from the canonical
 `~/Downloads/<Name>_silent.db` (§59.6 — a bare `--db Terminal_silent` 404s otherwise, the OCI bucket
 does not publish the silent DBs; verified md5 Hospital `09e52e5d...`, Terminal `908f998d...`).
