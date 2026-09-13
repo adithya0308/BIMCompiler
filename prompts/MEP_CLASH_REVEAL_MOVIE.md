@@ -7,10 +7,24 @@ original derivation/measurement behind a bullet below; both consolidations happe
 kept growing past ~2,400 lines (2026-09-06, then again 2026-09-11 at 4,669) — do that again on sight,
 don't wait to be asked (CLAUDE.md's own standing housekeeping rule).
 
-**New session: read §91.4 BEFORE running any bake — every bake goes through `./bake_scope.sh` or it
-kills your session (§91, three consecutive deaths on 2026-09-13). Then skip to the end of the file:
-§90 (the closing storey reveal — the live brief) and §91.5/§91.6 (the bake-perf lane, open).
-Older closed work: §59 (end of the 2026-09-06 band). DONE + shipped, all verified on real bakes: §57.1
+**New session, in this order:**
+1. **§91.4 BEFORE running any bake** — every bake goes through `./bake_scope.sh` or it kills your
+   session (§91: three consecutive deaths on 2026-09-13; §91.7: a scope also OUTLIVES a killed
+   launcher, so reap stale ones).
+2. **§94.7 before choosing a `--clip`** — the reveal window fraction is PER BUILDING. Hospital
+   `0.9077..0.9590`, Terminal `0.7252..0.8390`, HHS `0.6877..0.7674` (§95.1).
+3. **§98, §99, §100 — the live work.** The storey reveal is now a per-storey SECTION CUT (storey =
+   outer loop, sweep = inner loop), not a tint. §100's rake is the newest and is UNJUDGED on frames.
+   Code: worktree `/tmp/wt-storey-cut`, branch `feat/storey-section-cut`, based at `7833b639`;
+   commits `f3d36dda` then `9a02db1c`; the rake itself was still uncommitted at hand-off. All local,
+   nothing pushed, no PR.
+4. **§93** for why the tint was abandoned (measured, at 1080p), **§97** for the user's standing
+   rulings — no darkening, no gating of the clash/Sanity layers, no lit edge (§99.4).
+5. STILL OPEN, none started: a hi-res bake of the finished beat; widening Hospital's window to
+   `n x 2.0 s` (it uses 10.04 s of a 30.8 s pullback, §92.4, which would buy the full 1.5s+0.5s);
+   the per-storey floor-slab card (§92.7/§96.5 — reuse `cpe_slab_beat.js`'s `footprintArea` and the
+   §MEASURE_BOX, awaiting a yes); §99.6's XY-under-overhead A/B; and the blank `Reveal` HUD row
+   (§93.8). Older closed work: §59 (end of the 2026-09-06 band). DONE + shipped, all verified on real bakes: §57.1
 (combine), §57.4/§58.4/§58.4b/§58.4c (ARCH fade), §57.5 (camera-jump gaze smoothing), §58.5 (facade
 highlight raster-boundary classifier), §59 (Structural Sanity + Egress findings baked into the film,
 §59.5). TWO ITEMS STILL OPEN from §58: §57.3 (HHS cruise-beat flicker, ~74-76s) — read §58.2b FIRST,
@@ -5538,3 +5552,119 @@ magnitude, i.e. at exactly 45deg. Hospital's reveal rig measures 45.7deg driftin
 its window (§93.5) — 0.7deg from the boundary and on it for the whole beat. The 25deg threshold
 expresses the same intent without that instability; Terminal (-2.0deg) and HHS (10.4deg) are nowhere
 near either boundary.
+
+## §98 THE REVEAL IS ONE BEAT: STOREY = OUTER LOOP, SECTION CUT = INNER LOOP (2026-09-13, settled
+## with the user across a long live iteration — read this before touching cpe_storey_reveal.js)
+
+**98.1 THE SHAPE, in the user's own words:** *"a. X or Y storey by storey reverse section cut in 1.5s,
+then .5s pause, then the next upper storey does the axis section reverse cut"* and *"The storey is
+main loop, the reverse section cut is the inner loop"*. So: the outer loop walks the storeys upward;
+inside each storey's slot a plane sweeps from the FAR face toward the camera, filling that storey in;
+then a pause; then the next storey up. Storeys ABOVE the current one are hidden outright, storeys
+BELOW are already solid.
+
+**98.2 IT IS EXPRESSED AS `keep = (y <= ceil) AND ((y <= floor) OR (f.p >= d))`.** That is an AND over
+an OR, which one plane array cannot say in either mode. THREE's TWO clipping levels say it exactly:
+`renderer.clippingPlanes` is ALWAYS intersected with the material's, so the ceiling goes GLOBAL and
+the (floor OR sweep) pair goes on the material with `clipIntersection = true`. Nothing else in this
+viewer sets the global array. `clipIntersection` was already in this build (`navigate_find.js:1818`,
+§ROOM-CLIP, THREE r184) — this is reuse, not a new trick.
+
+**98.3 THREE CORRECTIONS THE HORIZONTAL CASE NEEDED, each caught by the user on frames.**
+- **Cumulative, not per-slot.** The first version drove depth from the slot-local fraction, so the
+  whole sweep restarted every storey and the building vanished and rebuilt once per storey. The
+  vertical axis never had this bug (its cut climbs the storey ladder by construction).
+- **Snap the axis to world X or Y**, not the camera-forward diagonal (*"i meant is just X or Y
+  depending on angle of cam. And it be less confusing"*). An axis-aligned section reads as a section;
+  a diagonal one reads as an arbitrary slice.
+- **LATCH the axis for the whole window** (*"HHS was starting on one axis when it switched to another.
+  Perhaps it just persist? ... it is still consistent and that is more important optics"*). Both halves
+  of the decision were being recomputed per frame, so a rotating camera flipped the cut 90deg mid-beat.
+  The sweep SIGN is latched too, or the sweep reverses when the camera crosses the diagonal. Note the
+  log was hiding it: `_cutAxisLogged` keyed on `'XY'` alone, so a world-axis flip never printed. Any
+  log gate must key on the FULL decision.
+
+**98.4 MEASURED AXIS FACTS.** Hospital's reveal rig is 45.7deg->47.2deg DOWN at a locked 20 m;
+Terminal's is -1.8deg->0.0deg at 20 m; HHS's is 10.4deg. §97.5's warning stands — do not replace the
+25deg threshold with a strict dominant-axis rule, which flips at exactly 45deg with Hospital sitting
+on the boundary for its whole beat.
+
+## §99 WHAT SHIPPED WITH IT, AND THE ONE THING THAT DID NOT
+
+**99.1 THE SLAB LEADS.** (*"the floor slab to cut first too ... this lends to visual cognition well"*.)
+Within a storey's sweep the plate arrives over the first `SLAB_LEAD_FRAC` (0.35) and the rest of the
+storey follows onto a ground the eye can already read. Separable because the batch bucket key carries
+`ifcClass` (`streaming.js:2210`, §BATCH_BUCKET_CLASS_PAINT), so a BatchedMesh holds exactly one class
+and its material can take its own plane. Two material groups, two plane arrays, same global ceiling.
+
+**99.2 THE BANDS ARE REAL SLAB ELEVATIONS, NOT MIDPOINTS OF STOREY MEANS.** §94.2 predicted this
+refinement; the user found it on frames first (*"I don't see the floor slabs section reveal. The top
+roof came first before the storey in it"*). Measured on HHS: Level 1's band by midpoint ran 0.74..4.30
+while Level 2's floor slab sits at 3.50..3.98 — INSIDE it — so with slabs leading, the storey above's
+plate arrived first and capped the storey being revealed. Real bottoms are -0.21 / 3.50 / 7.00.
+On Hospital the difference is up to 1.3 m per boundary (midpoints gave
+`[171.77,177.27,182.22,186.93,191.37,195.39,198.81]`, real slabs give
+`[171.66,176.66,181.66,186.66,191.66,196.66,199.66]`), `fromSlab=7 fromMidpointFallback=0`.
+
+**99.3 THE PLATE CLASSES ARE DERIVED FROM THE DB.** The band query pinned `ifc_class='IfcSlab'`, which
+silently misses any model whose plates are `IfcCovering`/`IfcPlate`. It now asks the DB which classes
+the building carries, filters them through a seed regex, and uses that SAME set for both the band
+boundaries and the material split so the two halves cannot disagree. Both HHS and Hospital resolve to
+`[IfcSlab,IfcPlate]`. A model with none falls back to midpoints and nothing leads —
+`§STOREY_CUT_BOUNDS` prints `slabClasses=[...] fromSlab= fromMidpointFallback=`, so a miss is visible.
+
+**99.4 THE LIT CUT EDGE WAS BUILT, THEN REMOVED ON THE USER'S CALL — do not rebuild it without a new
+ask.** *"that edge liting is noisy with something going ahead first ... let's try with no such gimmick.
+Conservative look, storey by storey sweep horizontally revealing more buildup action. Thus the code is
+cheap and simple, static"*, plus *"it gives relative longer linger time for viewers to appreciate its
+gradual buildup"*. The noise was structural: the slab leads, so geometry arrives AHEAD of any marker
+riding the main sweep. "Light the edges as they appear" would need a per-frame edge-detection pass
+over the scene — real cost for decoration. 123 lines removed. What it cost to learn, so nobody repeats
+it: a `LineLoop` draws at 1 device pixel whatever the bake resolution (WebGL ignores
+`LineBasicMaterial.linewidth`); a ribbon laid FLAT is seen edge-on by a shallow camera (a 3 m
+diagnostic width projected to ~0.5 m and drew 4-260 px); and pixel-counting a 38%-opacity mark is not
+a test — `#66ccff` at 0.38 over a dark interior composites near `(76,115,134)` and fails any naive
+"is it cyan" threshold, so a zero count proves nothing.
+
+**99.5 AN INSTRUMENT WORTH KEEPING.** `§MAXQ_FAIL` reports a message with no location. Three bakes were
+spent narrowing a crash by elimination; a `§STOREY_CUT_FAIL` try/catch that prints `e.stack` found it
+in ONE five-frame run — and the culprit was a stale `out.planes.length` in a LOG line, not in the cut.
+Add the stack capture FIRST next time. Decoration is also wrapped so it can never abort a bake; that
+guard fired for real (`§STOREY_CUT_EDGE FAILED ... CUT_EDGE_W is not defined`) and the bake still
+finished `fileOk=true`.
+
+**99.6 AXIS OVERRIDE FOR A/B:** `window.__storeyCutAxis = 'XY' | 'Z'` (unset = derive). The open
+question it exists for: does a VERTICAL cut also read under an OVERHEAD rig? If yes, the Z branch and
+the 25deg threshold can both go. Not yet run.
+
+## §100 THE RAKE — the stagger, expressed as a tilt instead of a second plane (2026-09-13, user idea,
+## implemented, first bake in flight at the time of writing)
+
+**100.1 THE ASK.** *"to ensure more time per sweep, it can stagger with the upper floors following even
+before the lower completes as they do not obscure ... as 80% done, the next storey begins"*, and
+*"this may give good continuity effect"* — the real argument, which a time-budget analysis misses:
+sequential sweeps with a hold stop the picture once per storey, overlap means something is always
+moving.
+
+**100.2 WHY IT IS NOT A SECOND PLANE.** Two storeys mid-sweep means the reveal threshold varies with
+HEIGHT. Treated as a step function it needs per-storey planes, and materials are SHARED across storeys
+via `A._matCache` (§90.3, and why `clonedMaterials=0` in every log) — the same wall that killed the
+fade in §92.2. But a threshold that varies with height is just a TILTED plane: `f.p - k*y >= c`. One
+plane, one extra term, no per-storey materials.
+
+**100.3 THE RAKE IS DERIVED, NOT TUNED.** `k = (1 - overlap) * (n - 1) * D / H`, with D the model's
+span along the snapped axis and H the band height, both measured from the model's own bbox via
+`A.ifc2three`. Predicted: Hospital (D~100, H~47, n=8) k~11.9, a plane **5deg off horizontal**; HHS
+(D~68, H~20, n=3) k~5.4, about **10deg**. `§STOREY_CUT_RAKE` logs k, the tilt in degrees, and the
+measured D/H/n so the prediction is checkable against what the bake computes.
+
+**100.4 THE CONSEQUENCE WORTH SITTING WITH.** At those rakes the staggered horizontal sweep converges
+on a NEAR-HORIZONTAL cut with a slight tilt — geometrically the Z cut raked a few degrees, not the
+vertical X/Y sweep. Which means §99.6's axis question may answer itself: at these tilts the two axes
+are the same plane with different rake, and there is nothing left to choose between.
+
+**100.5 WITH THE RAKE ON THERE ARE NO BANDS AND NO PAUSES.** One plane, `clipIntersection` off, global
+array empty — the tilt alone gives every storey its turn, so the motion never stops. The slab still
+leads (its plane runs slightly ahead). `CUT_RAKE_OVERLAP = null` restores §98's banded behaviour with
+its 1.5s/0.5s slots. **UNJUDGED: nobody has seen the rake on frames yet.** The risk to look for is that
+a continuous creep blurs the storey identity the stat card is naming.
