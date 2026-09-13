@@ -5352,3 +5352,58 @@ MEP + discipline sets. Find it by its label, not via `_resInfo`.
 but it has largely cleared by slot 5 and is gone by slot 8. It is TRANSIENT, not a permanent layer.
 The ruling to leave the clash/Sanity layers un-gated holds; this note exists only so the next session
 does not re-open it on seeing frame f51 alone.
+
+## §94 SECTION CUT — IMPLEMENTATION SPEC (2026-09-13, worktree `/tmp/wt-storey-cut`,
+## branch `feat/storey-section-cut`, based at `7833b639` — the exact commit §93's frames were baked from)
+
+**94.1 IT LIVES IN `cpe_storey_reveal.js`, NOT A NEW MODULE.** Same window, same `_fitList` slots,
+same "ONE PURE FUNCTION, TWO CALLERS" discipline the file's own header sets out, and `viewer.html`
+already loads it — no new script tag, no new load-order question.
+
+**94.2 THE CUT ELEVATION NEEDS NO NEW QUERY.** `A.storeyRevealList()` (line 86) already returns
+`{name, z}` per storey with `z = AVG(COALESCE(t.center_z,0))`, sorted ascending, already cross-checked
+against `spatial_structure` (§60.1). Scene conversion is the one `grid_views.js:193` already uses:
+`cutY = cutZ - A.modelOffset.z`. Verified on Hospital: DB Z 156.61..203.65 with `offset=165.81` gives
+scene Y -9.2..+37.8, which agrees with `§CINEMA_DIVE floorY=-9.43` and `§CAMERA envelope=...x43m`.
+
+**94.3 REUSE THE CLIP PATTERN, DO NOT CALL `applyFloorClip`.** `GridViews.applyFloorClip` does far
+more than clip: it hides roof meshes by IFC class, fades slabs to `opacity=0.08`, and consults
+`GridConfig.retainSet(viewMode)` (`grid_views.js:205-245`). That is the plan-view treatment and it
+would strip geometry the film needs. Take only the clip half, which is four lines there and is already
+proven against both `isMesh` and `isBatchedMesh` with `clipShadows`:
+- on window ENTRY: assign `material.clippingPlanes = [plane]`, `clipShadows = true`, one
+  `needsUpdate` per distinct material;
+- per FRAME: mutate `plane.constant` only — no material walk, no `needsUpdate`, so the cut costs
+  nothing per frame;
+- on window EXIT: `clippingPlanes = null` on the same set, restored exactly like `clearFloorClip`.
+`renderer.localClippingEnabled` is already `true` (`scene.js:119`) — do not touch it.
+
+**94.4 THE AXIS IS DERIVED FROM THE CAMERA, NOT FLAGGED.** §93.5 measured Hospital's reveal rig at
+45.7deg-47.2deg DOWN, where a horizontal cut exposes floor plates — the surface that camera can
+actually see. A building whose reveal plays at eye level gets nothing from a horizontal cut. So pick
+the plane from the view direction each frame:
+- pitch steeper than the threshold -> horizontal plane, normal `(0,-1,0)`, the §92 rising cut;
+- pitch shallower -> VERTICAL plane whose normal is the camera forward vector flattened to horizontal
+  and normalised — the "X/Y cut onto cam POV", sweeping toward the viewer.
+Log the choice per slot as `§STOREY_CUT_AXIS` with the measured pitch, so the decision is always
+readable from the log rather than inferred. The user nominated **Terminal** as the eye-level test case
+("its pull off is at eye level and up close to the wall filling up whole frame").
+
+**94.5 WHAT MUST NOT CHANGE.** The stat card (§90.4.4 — it works and stays), the caption, the
+per-slot pulse (§STOREY_REVEAL_PULSE), §STOREY_REVEAL_LAST_STAYS_LIT, and the clash + Sanity layers
+(§92.8, the user's ruling). The cut is added alongside the tint, not in place of the card.
+
+**94.6 §93.4 EXPOSES A DEFECT IN AN EXISTING FIX — record it, the cut resolves it incidentally.**
+§STOREY_REVEAL_LAST_STAYS_LIT (2026-09-10) exists so the final storey never enters its dark phase and
+the beat ends lit rather than on a dark building. On Hospital the final storey is `Level 7` with
+`meshesTouched=6`, and §93.4's frame f261 shows **no orange anywhere** — so that fix is defeated by
+set size: the window still ends on a storey nobody can see. A cut plate is the storey's whole
+footprint rather than a 2-to-51-mesh facade subset, so the cut removes the failure mode rather than
+tuning around it. Do not "fix" LAST_STAYS_LIT separately.
+
+**94.7 TEST MATRIX — all three silent DBs, low res for quick optics (user's instruction).**
+`--clip 0.900:0.962 --storey-reveal --gpu real --width 854 --height 480`, each through
+`./bake_scope.sh` (§91.4), each DB symlinked into the worktree's `buildings/` from the canonical
+`~/Downloads/<Name>_silent.db` (§59.6 — a bare `--db Terminal_silent` 404s otherwise, the OCI bucket
+does not publish the silent DBs; verified md5 Hospital `09e52e5d...`, Terminal `908f998d...`).
+Hospital additionally has the 1920x1080 baseline from §93, which is the one to judge final optics on.
