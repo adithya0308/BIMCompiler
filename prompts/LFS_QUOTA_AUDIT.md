@@ -159,12 +159,42 @@ duplication.** The same caution applies to `build/erp`: those 45 files are an in
 to `scripts/measure_bloat.js`'s dedup union, so removing them silently changes the
 **38.9×** figure published in `docs/MigrateComparisonPaper.md`.
 
-**⛔ OPEN — a decision, not more measurement.** Is the 114-file drift between
-`deploy/dev`/`deploy/live` and bim-ootb *intentional* (sandbox deliberately lags
-live) or *accidental* (nobody refreshes it)? `deploy/` was last touched 2026-09-01;
-bim-ootb moved to 2026-09-13. Either answer is fine — but until it is written down,
-every `grep` returns two versions of a file and a reader cannot tell which is
-current. Cost if ignored: exactly the round lost above.
+### §6.1 ⛔ THE FINDING — there are TWO production paths, from two different sources
+
+Measured 2026-09-14, and this supersedes the "is it stale?" framing:
+
+| tree | files | last touched | status |
+|---|---:|---|---|
+| `deploy/dev` | 403 | **2026-09-01** | **PRODUCTION.** `OCI_UPLOAD.md` rule 5 + its bucket table: `deploy/dev/` → `bim-ootb-live` bucket `sandbox/*.js`, described there as *"PRODUCTION — viewer code ONLY"* |
+| `deploy/live` | 104 | 2026-08-04 | older lineage; **not named** in the current upload rules |
+| `deploy/sandbox` | 27 | 2026-05-19 | dead, 4 months untouched |
+
+**So bim-ootb is not the single source of shipping code.** The viewer a user sees
+depends on which URL they open:
+
+- `red1oon.github.io/bim-ootb/` → GitHub Pages, built from **bim-ootb** (`deploy-pages.yml`), current to 2026-09-13
+- the OCI `bim-ootb-live` bucket → built from **`deploy/dev`**, current to 2026-09-01
+
+Classified against bim-ootb (`.js` with a counterpart): **143 identical, 27 pure
+stale (safe to refresh), 103 FORKED** — the fork side holds lines bim-ootb does not
+have, e.g. `deploy/live/navigate.js` +1,397, `deploy/live/measure.js` +907,
+`deploy/dev/tests/specs/17-find-navigate.spec.js` +55 including a whole test for
+Issue S275 that exists nowhere else.
+
+**⛔ Therefore: do NOT regenerate `deploy/` from bim-ootb.** It would delete work
+that exists only there. And do not merge it back wholesale either — 103 files each
+need a look, and some of the "unique" lines are old code bim-ootb has since
+rewritten rather than genuine features.
+
+**The decision, and it is one question, not 103:** should there be one production
+path or two? If one, pick it and make the other a build output. If two, write down
+which is canonical and put the refresh on a cadence, so a fix lands in both. Until
+that is answered, a bug fixed in bim-ootb is not fixed for OCI users, and every
+`grep` returns two versions with no way to tell which ships.
+
+**Cheap and safe meanwhile** (no decision needed): archive `deploy/sandbox` (dead
+since May) and `deploy/live` (not in the upload rules), which removes 131 of the
+196 name collisions and shrinks the problem to `deploy/dev` alone.
 
 ---
 
