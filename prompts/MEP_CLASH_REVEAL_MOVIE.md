@@ -7,7 +7,10 @@ original derivation/measurement behind a bullet below; both consolidations happe
 kept growing past ~2,400 lines (2026-09-06, then again 2026-09-11 at 4,669) — do that again on sight,
 don't wait to be asked (CLAUDE.md's own standing housekeeping rule).
 
-**New session: skip straight to §59 (end of file). DONE + shipped, all verified on real bakes: §57.1
+**New session: read §91.4 BEFORE running any bake — every bake goes through `./bake_scope.sh` or it
+kills your session (§91, three consecutive deaths on 2026-09-13). Then skip to the end of the file:
+§90 (the closing storey reveal — the live brief) and §91.5/§91.6 (the bake-perf lane, open).
+Older closed work: §59 (end of the 2026-09-06 band). DONE + shipped, all verified on real bakes: §57.1
 (combine), §57.4/§58.4/§58.4b/§58.4c (ARCH fade), §57.5 (camera-jump gaze smoothing), §58.5 (facade
 highlight raster-boundary classifier), §59 (Structural Sanity + Egress findings baked into the film,
 §59.5). TWO ITEMS STILL OPEN from §58: §57.3 (HHS cruise-beat flicker, ~74-76s) — read §58.2b FIRST,
@@ -5097,3 +5100,87 @@ untouched ground, and §FACADE_ONLY_TINT already proves the per-storey facade SE
 window arithmetic is correct (`realWindowSec=10.04 = windowFrac 0.0513 × 195.8 s`). `meshesTouched`
 is non-zero for every storey, so the tint is finding its geometry — the problem is sightline, not
 selection.
+
+## §91 THE BAKE KILLS THE SESSION — systemd-oomd, NOT the kernel, NOT Claude (2026-09-13,
+## diagnosed after three consecutive session deaths in the bake-perf lane)
+
+**91.1 THE EVIDENCE.** Three sessions in this lane died within eight minutes. All three are in
+`/var/log/syslog`, and all three are the same event — `systemd-oomd` SIGKILLing the whole
+gnome-terminal tab cgroup that the bake was launched from:
+```
+09:42:18  vte-spawn-3cf6ddad….scope  oom-kill  26.4G memory peak, 214.9M swap peak  (session 10865afa)
+09:45:56  vte-spawn-c51ca5ac….scope  oom-kill  26.6G memory peak, 861.9M swap peak  (session 3d1433d7)
+09:49:32  vte-spawn-d37d3840….scope  oom-kill  25.7G memory peak,   1.1G swap peak  (session 1fa10b25)
+          "systemd-oomd killed 31 process(es) in this unit"
+Killed …/vte-spawn-d37d3840….scope due to memory pressure for /user.slice/user-1000.slice/
+user@1000.service being 77.37% > 50.00% for > 20s with reclaim activity
+```
+The same storm also killed Firefox at 09:38 (19 procs), so this is not Claude-specific — oomd kills
+whichever child scope is the worst offender, and the bake tab always is.
+
+**91.2 THE MECHANISM — and why the usual evidence is empty.** Policy on this box is
+`ManagedOOMMemoryPressure=kill`, `ManagedOOMMemoryPressureLimit=50%`,
+`DefaultMemoryPressureDurationSec=20s` on `user@1000.service`. oomd is PSI-based and kills a whole
+cgroup unit; it is NOT the kernel OOM killer. Therefore **`dmesg` is empty, `/proc/vmstat oom_kill`
+is 0, and the user slice's `memory.events oom_kill` is 0** — do not conclude "no OOM happened" from
+those three. `grep -a 'systemd-oomd killed' /var/log/syslog` is the only place it shows.
+Because `claude` and the bake are children of the SAME vte scope, killing the offender kills the
+session. Sibling sessions (~200 MB each, SQL/log work) are never selected — which is exactly why
+only this lane died and the other two lanes ran through it untouched.
+
+**91.3 THE FOOTPRINT IS REAL, NOT A LEAK.** In-flight sampling of the bake tree (PSS, not RSS —
+headless Chrome shares large mappings and summing RSS double-counts):
+```
+ts_s  tree_pss_mb  nproc  sys_avail_mb  swap_used_mb  top_proc
+ 0        28         2      27793          2227       node:28MB
+ 6      6910        25      19637          2227       type=renderer:1041MB
+13     17170        26       9952          2227       type=renderer:3465MB
+23     27317        26       1264          3128       type=renderer:4183MB   ← 23 s from idle to death
+48     27221        26       1127          3335       type=renderer:4152MB
+```
+One `cli_silent_bake.js --width 1920 --height 1080 --gpu real` on `Hospital_silent` = ~26 GB on a
+31.8 GB box, reached in 23 seconds. `cli_silent_bake.js` opens a single `newPage()` (line 187) — there
+is no concurrency knob to turn down; the 26 processes are one Chrome's own process tree.
+
+**91.4 MANDATORY FROM NOW ON — launch every bake through `./bake_scope.sh`.** It puts the bake in its
+own transient systemd scope, a sibling of the terminal's scope rather than a child. oomd then selects
+the BAKE scope as the offender and the session survives. Never call `node cli_silent_bake.js`
+directly from a session again:
+```
+./bake_scope.sh node cli_silent_bake.js --db Hospital_silent --out out/x.mp4 --gpu real ...
+```
+The wrapper prints the scope name on entry and the cgroup's own `memory.peak` on exit
+(`§BAKE_SCOPE_PEAK rc=… memPeak=… swapPeak=…`) — that number is the honest per-bake footprint and
+belongs in any perf claim made in this lane. If the scope is killed there is no `§BAKE_SCOPE_PEAK`
+line at all, only `§BAKE_SCOPE_KILLED rc=137|143`; that absence is the signal.
+**No cap is applied by default, deliberately** — a hard cap distorts the very wall-clock this lane
+measures. Caps are opt-in, and one measured caveat matters: `BAKE_MEM_MAX` **alone does not stop
+anything** (verified 2026-09-13 — a cgroup at `memory.max` spills to swap and only OOMs once swap is
+gone too; a 400 MB allocation under `MemoryMax=200M` completed, `swapPeak=0.2G`). Set
+`BAKE_SWAP_MAX=0` alongside it to get a real hard stop (verified: same allocation then dies, session
+untouched). `BAKE_MEM_HIGH` is the soft brake — it throttles by reclaim and never kills.
+
+**91.5 THE PERF LANE'S MEASUREMENTS, RESCUED FROM THE THREE DEAD SESSIONS.** All real-GPU,
+1920×1080, `Hospital_silent`, `--clip 0.20:0.215`, 70 frames. Nothing here is merged yet; the
+worktree is `/tmp/wt-bake-perf` on `perf/bake-frame-cost` with `viewer/cinema_maxq.js` +
+`viewer/effects.js` still dirty.
+- **Where the per-frame second goes** (`§MAXQ_FRAME_PHASE`, steady state i=20..60):
+  `totalMs≈1000 = setupMs≈72 + foldMs≈700 + captureMs≈190 (webp≈180) + idbMs≈6`. The fold is 70 %
+  of the frame; the encode is 19 % and is **pure throwaway** — every frame is decoded again and
+  re-encoded to H.264 by the mp4 muxer afterwards.
+- **Encoder A/B on identical frames** (`§MAXQ_ENCODE_AB`, 13 samples): `jpeg q0.95 = 21–35 ms`,
+  `webp q0.92 = 148–206 ms`, `png = 60–75 ms`. JPEG is **~6.4× faster than the WebP in use**
+  (27 ms vs 173 ms median) at ~2.4× the intermediate bytes, which never reach the deliverable.
+- **Is the swap visible?** §R10's RMS instrument, 38 frames: noise floor (webp A vs webp B)
+  `rms_mean=0.706, max=1.884`; treatment (webp vs jpeg q0.95) `rms_mean=1.471, max=2.917`. **Real but
+  tiny — and NOT yet under the floor.** The session died mid-way through re-running the treatment at
+  `jpeg q=1.0` to get it under the noise floor. That run is the first thing to redo.
+- **A second, independent lever, found and not yet acted on:** the fold-completion poll sleeps 100 ms,
+  so every frame overshoots by ~50 ms after the render is already finished. Worth ~5 % of the frame on
+  its own and it is orthogonal to the encoder question.
+
+**91.6 WHAT IS STILL OPEN IN THE PERF LANE.** (a) the `jpeg q=1.0` RMS re-run of 91.5; (b) the 100 ms
+fold poll; (c) the fold itself at 700 ms/frame — untouched and by far the biggest term, no root cause
+yet. Do NOT claim a speed-up in this lane from an encode number alone: the deliverable is wall-clock
+per frame from `§CLI_BAKE_WALL`, on a bake launched through §91.4's wrapper so the figure is not
+polluted by swap thrash.
