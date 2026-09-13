@@ -5279,3 +5279,76 @@ on those same frames, both reusing shipped code and neither needing new derivati
 - **Sun into the opened storey.** `clipShadows: true` is already set alongside the clip plane
   (`grid_views.js:218/230/238`), so the film's own sun should land on the exposed floor plate with
   real shadows at zero lighting cost. Verify on frames; do not design for it before then.
+
+## §93 THE REVEAL ON AT 1080p — FIRST FRAMES EVER SEEN, AND WHAT THEY SETTLE
+## (2026-09-13, `/tmp/wt-v87` @ `fix/bucket-key-floor`, `out/v88_reveal_window.mp4`)
+
+**93.1 THE BAKE.** `bake_scope.sh node cli_silent_bake.js --db Hospital_silent --gpu real --width 1920
+--height 1080 --fps 24 --measure --storey-reveal --clip 0.900:0.962 --port 8623`. Clean:
+`§CLI_BAKE_WALL totalSec=500 aborted=no fileOk=true`, `§CLI_BAKE_FFPROBE codec=h264 1920x1080
+frames=291 fps=24/1 durationSec=12.125`. Wrapper reported `§BAKE_SCOPE_PEAK rc=0 memPeak=7.8G
+swapPeak=0.0G` — so §91's 26 GB was the back-to-back double bake, and a single clip of this length
+costs 7.8 G. The session was never at risk; §91.4 works.
+
+**93.2 §90.1 IS CLOSED.** With the flag on: `storeyReveal=1`, `§STOREY_REVEAL_LIST n=8
+storeys=[Level 1..Level 7]`, `§STOREY_REVEAL_FIT windowSec=10.04 minSlotSec=1 storeysAvailable=8
+shown=8 slotSec=1.25 (all storeys fit)`, and TINT/TIMING/STATS fire for all eight. Exactly as §90.1
+predicted — it was never a code defect, only the flag. Do not re-investigate.
+
+**93.3 §92.2 RE-CONFIRMED ON v87, not just v86.** `clonedMaterials=0` on ALL EIGHT storeys. The
+material-clone path catches nothing on Hospital; every tint is per-instance `setColorAt`. The no-fade
+argument in §92.2 stands on fresh evidence.
+
+**93.4 THE FINDING: LEGIBILITY TRACKS THE FACADE SET, AND THE SET IS TINY AND WILDLY UNEVEN.** Frames
+quoted are clip frames of `v88_reveal_window.mp4` (`tNorm = 0.900 + f/291 x 0.062`):
+```
+slot storey    colour   meshesTouched  frame  what the frame actually shows
+ 1   Level 1   #2979ff      19          f51   NO blue anywhere            <- §90.2 reproduced
+ 4   Level 4   #ff6d00      51          f141  READS — broad bands down the left facade, centre strip
+ 5   Level 5   #2979ff      44          f171  FAINT — thin parapet/roof-edge LINES only, no surface
+ 7   Level 7A  #ffd600       2          f231  NO yellow anywhere; card also reads "0 doors"
+ 8   Level 7   #ff6d00       6          f261  NO orange anywhere; card reads "1 doors"
+```
+Two things follow, and they are not what §90 assumed:
+- **Count alone does not predict legibility.** 51 meshes (L4) reads as broad surface; 44 meshes (L5)
+  reads only as slender edge lines, because L5's facade members are parapet strips while L4's are
+  tall wall panels. The predictor is the projected AREA of the set, which nothing currently measures.
+- **The reveal's last two slots are dead in both halves.** L7A (2 meshes, card "0 doors") and L7
+  (6 meshes, card "1 doors") are 2.5 s of the 10.04 s window — a quarter of the beat — with no visible
+  tint AND no meaningful number. The film currently ENDS the reveal on its weakest slot, immediately
+  before the orbit. Any "restore everything on the last storey" payoff (§94 idea) has nothing to pay
+  off from as the slots stand.
+
+**93.5 A CORRECTION TO THE IN-SESSION CAMERA CLAIM.** From the v87c pose track the reveal rig is real
+and constant: camera->target 20.0 m, pitch 45.7deg->47.2deg DOWN, horizontal offset ~13.7 m, the whole
+rig lifting 16 m (camY 80.1->96.0, tgtY 65.8->81.3), while the building occupies scene Y -9.2..+37.8
+(DB Z 156.61..203.65 less `offset=165.81`; `§CAMERA envelope=101x151x43m` agrees). That does put the
+aim point 28-43 m above the roof — but the conclusion drawn from it in session, that the reveal is
+"aimed at sky", is WRONG and the frames disprove it: the building is well centred and fills roughly
+45% of frame width in every slot. Level 1 fails because it is the GROUND floor seen from 46deg above,
+where its facade is the most occluded strip in the picture. **The camera is not the defect. The set
+is.**
+
+**93.6 THIS IS THE STRONGEST ARGUMENT FOR §92's SECTION CUT.** From a 46deg-overhead camera the
+surface that is genuinely visible is the FLOOR PLATE, not the facade. A rising cut hands this camera
+exactly what it can already see, and it is immune to §93.4's area problem because a cut plate is the
+whole storey footprint (L1 = 98.6x90.3 m) rather than a 2-to-51-mesh facade subset.
+
+**93.7 THE STALL DOES NOT EXIST — measured, and it retires an idea raised in session.** Over all 4,699
+frames of the v87c pose track the median camera speed is 0.1101 m/frame and there is **no contiguous
+run of even 1 s below half that anywhere in the film**. The reveal window runs at 0.0995 m/frame,
+**90% of the film's median**. The pullback is not slow; it is empty. Do not design against a "stall"
+— there is none to use. (Camera travel inside the window is 24.0 m total, 3.0 m per storey.)
+
+**93.8 §92.7 CORRECTED — the empty HUD row is a different panel than stated.** §92.7 attributed the
+user's "Reveal line in the 2nd HUD" to the corner roster (`_resInfo`). Wrong. The frames show a
+labelled status panel at lower-left with four rows — `Storey / Room / Build-up / Reveal` — and the
+**Reveal row is blank in all eight slot frames** while `Storey` reads "Level 4, Level 1" and `Room`
+lists corridors. That row is the target for the user's proposal to show the nearest/most prominent
+MEP + discipline sets. Find it by its label, not via `_resInfo`.
+
+**93.9 THE USER'S §92.8 RULING IS SUPPORTED BY THE FRAMES.** The Structural "span depth steel,
+327 flagged" set covers the entire roof in translucent yellow at slot 1 and is genuinely heavy there —
+but it has largely cleared by slot 5 and is gone by slot 8. It is TRANSIENT, not a permanent layer.
+The ruling to leave the clash/Sanity layers un-gated holds; this note exists only so the next session
+does not re-open it on seeing frame f51 alone.
