@@ -5451,3 +5451,47 @@ which is exactly what the user predicted.
 `§CLI_BAKE_WALL totalSec=111 aborted=no fileOk=true`, `§BAKE_SCOPE_PEAK memPeak=5.2G`. Verified to be
 the PRE-cut build: its page JS was fetched 8 s before the §STOREY_SECTION_CUT edit landed and the log
 carries 0 `§STOREY_CUT` lines. Terminal's model spans DB Z -30.69..28.59 (59.3 m).
+
+## §96 THE SECTION CUT ON ALL THREE FLEET BUILDINGS — IT WORKS, WITH ONE HONEST CAVEAT
+## (2026-09-13, `/tmp/wt-storey-cut` @ `f3d36dda`, frames in `out/cutframes/`)
+
+**96.1 ALL THREE BAKED CLEAN AND THE DERIVED AXIS RULE RESOLVED CORRECTLY WITHOUT A FLAG.**
+```
+Hospital  §STOREY_CUT_AXIS axis=Z  pitchDeg=45.7  §CLI_BAKE_WALL totalSec=414  8 slots
+Terminal  §STOREY_CUT_AXIS axis=XY pitchDeg=-2.0  §CLI_BAKE_WALL totalSec=121  6 slots
+HHS       §STOREY_CUT_AXIS axis=XY pitchDeg=10.4  §CLI_BAKE_WALL totalSec= 70  3 slots
+```
+All `aborted=no fileOk=true`, 854x480, each through `bake_scope.sh`.
+
+**96.2 HOSPITAL (Z axis) — the §93.4 failure is gone.** `hosp_cut_s1_f27.png`: the frame that showed
+**no blue anywhere** with the tint (§93.4, 19 meshes) now shows Level 1's entire 98.6x90.3 m floor
+plate, internal partitions and corridors legible from the 46deg camera. The storey that was the least
+visible thing in the picture is now the whole picture. `hosp_cut_s8_f238.png`: the building is WHOLE
+again at the last slot — the sweep really does finish at the queried model top (203.65), so the beat
+ends on a complete building rather than a sliced one. That is the "restore everything at the end"
+payoff, obtained geometrically rather than by repainting ~46k instances.
+
+**96.3 TERMINAL AND HHS (XY axis) — the eye-level case reads better than the overhead one.**
+`term_cut_s3_f66.png` is an architectural section brought to life: at eye level 20 m out, the near
+facade peels away and the concourse interior — columns, roof trusses, ceiling grid, counters, the
+yellow band — fills the frame. `hhs_cut_s2_f74.png` is the strongest frame of the whole exercise:
+three floors opened at once with rooms, partitions and furniture all legible. The user's X/Y proposal
+is vindicated on its own nominated test case.
+
+**96.4 THE CAVEAT, AND IT IS REAL: on the XY axis the card and the visual disagree.** The vertical cut
+sweeps along the camera's forward axis, so it reveals DEPTH layers, not storeys — `hhs_cut_s2` shows
+all three floors simultaneously while the stat card reads "39 doors · Level 2". On the Z axis there is
+no such gap: the plane rests on the named storey's own slab and the card matches what is on screen.
+So the XY cut is currently a superb SECTION beat but not a STOREY reveal. Options, in order of
+honesty, for whoever picks this up:
+1. On the XY axis, retitle the card for what is actually shown (a section through the building), not
+   a storey it is not isolating.
+2. Sweep the XY plane per storey band instead of per depth — i.e. pair the vertical cut with a
+   horizontal sandwich so only the named storey's depth is peeled. Costs a second plane; the
+   `clippingPlanes` array already takes N.
+3. Accept it as a section beat on eye-level paths and drop the per-storey card there.
+Do NOT ship the XY axis with the current card wording — it asserts something the frame does not show.
+
+**96.5 WHAT IS STILL UNANSWERED.** §92.6's sizing question (1.5 s per level vs whole sweep) is still
+the user's to settle; `CUT_RISE_FRAC=0.75` is a placeholder that makes each 1.25 s slot 0.94 s rising
+and 0.31 s held. And §93.8's blank `Reveal` HUD row is still blank in every frame of all three bakes.
