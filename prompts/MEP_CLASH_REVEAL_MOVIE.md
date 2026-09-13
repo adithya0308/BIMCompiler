@@ -5687,3 +5687,37 @@ array empty — the tilt alone gives every storey its turn, so the motion never 
 leads (its plane runs slightly ahead). `CUT_RAKE_OVERLAP = null` restores §98's banded behaviour with
 its 1.5s/0.5s slots. **UNJUDGED: nobody has seen the rake on frames yet.** The risk to look for is that
 a continuous creep blurs the storey identity the stat card is naming.
+
+
+## §101 OPEN — THE SUN APPEARS TO HALT DURING THE REVEAL (user observation 2026-09-13, measured but
+## NOT diagnosed; recorded so the next session does not chase the wrong thing)
+
+**101.1 THE REPORT.** *"seems to be halt on the Sun smooth movement, as seen on the shadow play."*
+
+**101.2 THE SUN ARC IS NOT THE CAUSE — ruled out on the Hospital `hosp_v12` log, do not re-investigate
+it.** `§SUN_ARC_STEP` fires 289 times across 289 frames, i.e. once per frame. `_sunArcStep`
+(`effects.js:2673`) sets `shadowMap.needsUpdate` itself every frame, deliberately, because
+`shadowMap.autoUpdate` is OFF for perf (`tools.js:949`, `A.renderer.shadowMap.autoUpdate =
+(window._shadowAutoUpdate === true)`) — its own comment says a frozen shadow under a moving sky
+"reads as a bug rather than a static look". The underlying values are continuous, not quantised: the
+1-decimal `§SUN_ARC_STEP` print is log rounding, while `§SUN_ARC_FILL_PIN` shows elevation moving
+0.01deg per frame and `sunPos` about 0.9 units in Y per frame.
+
+**101.3 WHAT IS MEASURABLY TRUE, and the most likely reading.** The arc is LINEAR in tNorm
+(`_sunElevationAt`: 55deg -> 6deg across the film) = **0.25deg/s**, constant everywhere — it does not
+slow down for this beat. Across the 10.04 s reveal window that is **2.51deg of total travel**. And the
+reveal is the one beat where the CAMERA nearly stops: 24.0 m over the whole window, against a film
+median of 0.11 m/frame (§93.7). In earlier beats the shadow play is dominated by camera motion; here
+that contribution vanishes and only 0.25deg/s of real sun motion is left. So the likely answer is that
+nothing is broken and the beat simply exposes how slow the arc is — but this is a HYPOTHESIS, not a
+measurement, and it has not been checked against frames.
+
+**101.4 THE OTHER CANDIDATE, if frames disprove §101.3.** The section cut sets `clipShadows = true` on
+every material it touches (§94.3), so shadow geometry changes as the cut advances. During the reveal
+the dominant change in the shadow image may be the CUT, not the sun — which could read as the sun
+having stopped while something else moves the shadows. Check by baking the window with
+`--no-storey-reveal` and comparing the shadow play; if it looks equally static, §101.3 is the answer.
+
+**101.5 DO NOT "FIX" BY SPEEDING THE ARC.** §SUN_ARC_TOPOUT_SNAP was shipped and then REVERTED on the
+user's own ruling that the linear 55deg->6deg formula is correct (see the shipped/closed recap at the
+top of this file). Any change to the arc needs a new user ask.
