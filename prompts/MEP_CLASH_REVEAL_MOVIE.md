@@ -5184,3 +5184,98 @@ fold poll; (c) the fold itself at 700 ms/frame — untouched and by far the bigg
 yet. Do NOT claim a speed-up in this lane from an encode number alone: the deliverable is wall-clock
 per frame from `§CLI_BAKE_WALL`, on a bake launched through §91.4's wrapper so the figure is not
 polluted by swap thrash.
+
+## §92 THE STOREY REVEAL, SETTLED WITH THE USER — SECTION CUT, NOT TINT, NOT FADE
+## (2026-09-13, design agreed in session; supersedes nothing in §90, it answers §90.4)
+
+**92.1 THE RULING.** The closing reveal becomes a **rising section cut**: a horizontal clip plane
+sweeps bottom-up, pausing at each floor slab, so each storey's facade is exposed as the plane passes
+it. The user's words: *"section cut reveals each storey is already powerful optics and fade is
+counter art."* The stat card rides along exactly as it does now (§90.4.4). This answers §90.4.2 —
+"the camera, not the material" — from the geometry side instead.
+
+**92.2 WHY FADE IS NOT AN OPTION HERE — it is unbuildable on Hospital, not merely disliked.**
+A per-storey fade needs per-storey opacity. It does not exist in this build:
+- The per-storey material-clone path IS implemented (`cpe_storey_reveal.js:424-440`, the
+  `§STOREY_REVEAL_TINT_SHARED_MATERIAL` fix of 2026-09-06) but it only catches
+  `o.isMesh && o.userData.storey === storeyName`. On Hospital that set is empty — v86's own log reads
+  `§STOREY_REVEAL_TINT storey="Level 1" meshesTouched=19 clonedMaterials=0`, and
+  `§SHADOW_FRONTIER_AT_CAPTURE` states it outright: "no individually-meshed elements in this scene —
+  all geometry is batched/instanced".
+- The tint therefore survives only because `setColorAt` writes per-instance DIFFUSE. There is no
+  per-instance alpha on InstancedMesh or BatchedMesh, so opacity stays on the SHARED material and
+  fading one storey repaints the building — the exact 2026-09-06 bug, re-entered by a new door.
+- What IS per-instance is **visibility** (`bm.setVisibleAt`, `grid_views.js:245`, `dlod.js`) — a hard
+  pop-in, not a fade. And what is immune to the whole shared-material problem is the **clip plane**,
+  because a world-space cut is geometry, not a material property. That is why §90.3's retirement of
+  x-ray and darken-above does NOT extend to this: it is not the same class of mechanism.
+
+**92.3 THE MECHANISM ALREADY EXISTS AND IS ALREADY LOADED ON THE BAKE PAGE.** Nothing new to build:
+- `GridViews.applyFloorClip(A, env, viewMode, cutZOverride, hideSet)` — `grid_views.js:191`, exported
+  at `:390`. Takes an arbitrary cut Z. Applies to plain meshes AND `BatchedMesh` (`:217/:237`) with
+  `clipShadows = true`. `clearFloorClip` at `:260`.
+- `renderer.localClippingEnabled = true` is already set at `scene.js:119`.
+- `viewer.html:946` loads `grid_views.js` on the same page the bake drives.
+- `material.clippingPlanes` is an ARRAY; the shipped code passes one plane. Two planes (a storey's
+  floor and its ceiling) isolate a single storey band — that was the "sandwich" option; the user chose
+  the rising single-plane cut instead, but the two-plane form costs the same and stays available.
+
+**92.4 THE BUDGET — and a correction made in-session.** The reveal window is sized against
+`_useSec.rise`, the UN-folded pullback. `effects.js:8073` records it **measured at 30.8 s on
+Hospital**, and the clash pair-card rotation independently measures its own pullback window at
+**25.9 s** (`cinema_maxq.js:2315` — "7 cards x 4.5 s overran the 25.9 s window"). The 17.6 s that
+appears in `cpe_storey_reveal.js`'s header §CINEMA_PACING breakdown is the NATURAL/folded pacing and
+is the wrong number for this purpose — it was quoted in session and corrected. Today the reveal uses
+10 shape-seconds of that (`STOREY_REVEAL_WINDOW_SEC = 10`, `effects.js:8078`), measured as
+`§STOREY_REVEAL_FIT windowSec=10.04 slotSec=1.25 shown=8`. **So there is ~16-21 s of spare inside
+pullback**, and the cut fits at either sizing discussed (1.5 s sweep + 0.5 s hold per level x 8 =
+16.0 s; or a 1.5 s whole sweep + 8 x 0.5 s = 5.5 s). The single number to trust on any re-bake is what
+`§STOREY_REVEAL_WINDOW pullbackSec=` prints, not either figure above.
+
+**92.5 PLACEMENT — the user's reasoning, kept because it is the argument, not the conclusion.**
+*"The process best begins while scene about to slow down near halt as that is boring without event."*
+The window is currently the LAST 10 s of pullback, which leaves the earlier part of the beat playing
+a decelerating camera with nothing happening. Open the window earlier so the cut occupies the dead
+stretch. This is the same instinct that §STOREY_REVEAL_WINDOW_SEC's own 5→10 widening acted on
+(2026-09-10, *"seems to wait too long... rather uneventful or redundant repeat"*) — the budget above
+says it can go further.
+
+**92.6 STILL OPEN — the one sizing question the user has not settled.** Is 1.5 s the cut time PER
+LEVEL, or the whole bottom-to-top sweep? It no longer changes whether it fits (§92.4), but it changes
+the beat entirely: 16.0 s of deliberate storey-by-storey ascent versus a 1.5 s sweep punctuated by
+eight half-second holds. Ask before building.
+
+**92.7 THE SECOND HUD SLOT IS EMPTY BY CONSTRUCTION — the user's own catch.** *"The Reveal line in
+the 2nd HUD is not used mostly until last storey level display."* Confirmed in code: during the
+reveal window the storey card takes the panel slot and `cinema_maxq.js:2371-2377` states
+`_resInfo` "is already null here by construction ... so no second corner panel can appear alongside
+it". The slot is dark for the WHOLE reveal, not just until the last storey. The user's proposal is to
+fill it with the most prominent/nearest MEP + discipline sets on screen. Data exists:
+`A.cpeRevealDiscQtyCost` (`effects.js:5995`) already computes discipline qty/cost for the Reveal
+round's roster, and there is precedent for a facing/nearest query in `cpe_flyout_beats.js:138`
+("nearest this side"). NOTE when building it: that `null` is deliberate anti-collision, so filling the
+slot is an explicit reversal and needs its own § log line, not a silent change.
+
+**92.8 USER RULING — do NOT suppress the clash or Sanity/Egress layers during the reveal.** It was
+raised in session (*"should we halt all Sanity and Clash highlights during pull back when Storey
+reveal feature ON? This is to avoid clutter"*) and then ruled the other way by the user: *"cut out the
+clutter complaint, i think it will come out right."* **Do not re-propose without a new user ask** —
+same standing as §SUN_ARC_TOPOUT_SNAP's revert. Two observations were made before the ruling and are
+kept here as facts to CHECK on frames, not as arguments to re-run: (a) `cinema_maxq.js:2313` runs the
+discipline-pair highlight across the whole pullback and drives `A.clashFilm.highlightDiscPair(key)`
+in 3D, while the reveal at `:2371` overrides only `_statInfo` — so the last-lit pair stays lit through
+the reveal today; (b) `rule_findings_film.js:271/:406` (§70) deliberately made findings world content
+for the whole film with "no window, no storey slot", and they composite in SCREEN space with leaders
+to world positions, so a clip plane can remove the geometry a leader points at. Both are things to
+LOOK for in §92.9's frames and report; neither is a reason to gate the layers.
+
+**92.9 NEXT ACTION — §90.4.1, unchanged.** Nobody has yet seen the reveal ON at 1080p (v87 baked
+`storeyReveal=0`). Re-bake the reveal window with `--storey-reveal` and decide from real frames,
+quoting frames not adjectives. Run it through `./bake_scope.sh` (§91.4). Two wow candidates to judge
+on those same frames, both reusing shipped code and neither needing new derivation:
+- **Light the cut edge.** `section_cut.js` already computes the exact slice at an arbitrary Z
+  (`sliceMesh(verts, faces, cutZ)`, tags `§SC_SLICE`/`§SC_CUT_PLANE`, 5 mm endpoint matching). Feed it
+  the clip plane's own Z and the cut becomes a moving line of light instead of an absence.
+- **Sun into the opened storey.** `clipShadows: true` is already set alongside the clip plane
+  (`grid_views.js:218/230/238`), so the film's own sun should land on the exposed floor plate with
+  real shadows at zero lighting cost. Verify on frames; do not design for it before then.
