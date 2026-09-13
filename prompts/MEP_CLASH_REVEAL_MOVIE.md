@@ -5415,3 +5415,39 @@ Otherwise `--storey-reveal --gpu real --width 854 --height 480`, each through
 `~/Downloads/<Name>_silent.db` (§59.6 — a bare `--db Terminal_silent` 404s otherwise, the OCI bucket
 does not publish the silent DBs; verified md5 Hospital `09e52e5d...`, Terminal `908f998d...`).
 Hospital additionally has the 1920x1080 baseline from §93, which is the one to judge final optics on.
+
+## §95 THE THREE FLEET REVEAL WINDOWS, MEASURED — AND TERMINAL CONFIRMS THE EYE-LEVEL CASE
+## (2026-09-13, `/tmp/wt-storey-cut`, low-res probes per §94.7)
+
+**95.1 THE WINDOWS. They differ by more than 2x and they are NOT interchangeable** (this is the §94.7
+correction, stated once with all three so nobody has to re-derive it):
+```
+building                    windowStartFrac  orbitStartFrac  windowFrac  realWindowSec  storeys  slotSec
+Hospital_silent                  0.9077          0.9590        0.0513       10.04          8      1.25
+Terminal_silent                  0.7252          0.8390        0.1139        6.01          6      1.00
+HHS_Office_Federated_silent      0.6877          0.7674        0.0797        5.76          ?      ?
+```
+Read `§STOREY_REVEAL_WINDOW` from a short clip before choosing a `--clip`; do not reuse another
+building's figures. Terminal drops 2 storeys to §60.1's spatial_structure cross-check
+(`storeysAvailable=6 shown=6`).
+
+**95.2 TERMINAL IS THE EYE-LEVEL CASE — the user called it before it was measured.** The user's claim
+was *"The Terminal will get the X/Y cut as its pull off is at eye level and up close to the wall
+filling up whole frame."* Measured from `term_reveal_poses.json` across all six slots:
+```
+slot  camY    tgtY    cam->tgt(m)   pitch_down_deg
+ 1   -11.1   -10.4       20.0           -1.8
+ 3   -10.5   -10.2       20.0           -0.9
+ 6    -9.8    -9.8       20.0           -0.0
+```
+**Dead level — pitch −1.8deg to 0.0deg, 20 m from subject, for the whole window.** Against Hospital's
+45.7deg-47.2deg down at the same 20 m (§93.5). So the two fleet buildings sit on opposite sides of
+§94.4's axis threshold with a wide margin (25deg), and the derived-axis rule resolves them correctly
+without a per-building flag: Hospital -> horizontal cut onto floor plates, Terminal -> vertical cut
+sweeping onto the camera POV. A horizontal cut on Terminal would be viewed edge-on and show nothing,
+which is exactly what the user predicted.
+
+**95.3 TERMINAL BASELINE (tint only, for before/after).** `out/term_reveal.mp4`, 152 frames 854x480,
+`§CLI_BAKE_WALL totalSec=111 aborted=no fileOk=true`, `§BAKE_SCOPE_PEAK memPeak=5.2G`. Verified to be
+the PRE-cut build: its page JS was fetched 8 s before the §STOREY_SECTION_CUT edit landed and the log
+carries 0 `§STOREY_CUT` lines. Terminal's model spans DB Z -30.69..28.59 (59.3 m).
