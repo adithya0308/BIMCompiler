@@ -5495,3 +5495,46 @@ Do NOT ship the XY axis with the current card wording — it asserts something t
 **96.5 WHAT IS STILL UNANSWERED.** §92.6's sizing question (1.5 s per level vs whole sweep) is still
 the user's to settle; `CUT_RISE_FRAC=0.75` is a placeholder that makes each 1.25 s slot 0.94 s rising
 and 0.31 s held. And §93.8's blank `Reveal` HUD row is still blank in every frame of all three bakes.
+
+## §97 USER RULINGS ON THE REVEAL, 2026-09-13 — read before re-proposing anything below
+**97.1 NO DARKENING OF THE OTHER STOREYS.** Proposed in session (tint replaced by darkening the
+already-revealed storeys, with everything restored on the last storey), then ruled out by the user:
+*"should the darken lower storeys happen? I think better not.. it be over drawing"*. Same standing as
+§92.8 and the sun-arc revert — **do not re-propose without a new user ask.** The supporting evidence,
+so nobody re-derives it: the cut already carries the contrast (geometry present vs removed is a
+stronger cue than a tonal one, so darkening is a second signal for the same fact); it would cost
+~46k per-instance `setColorAt` writes per slot against the tint's 2-51 (Level 4 alone is 11,470
+elements, §92 working notes); and `§SUN_ARC_STEP` reads 7.9deg-17.7deg through these windows, so much
+of the building is already in shadow and would not visibly change. The "restore everything at the
+end" payoff the darkening was meant to buy is already delivered geometrically — §96.2, the sweep
+finishes at the queried model top and the building is whole in the final slot.
+
+**97.2 THE CUT IS ONE BEAT ON WHICHEVER AXIS THE CAMERA WANTS.** User: *"It is simply dynamic in
+reveal to cam pov either ZXY, reverse section cut build into cam"*. So there are not two features:
+the plane always starts at the FAR face and travels INTO the camera, and the axis is chosen from the
+camera. For an overhead rig that is the vertical axis (the rising cut IS "toward the camera"); for an
+eye-level rig it is horizontal. §96.2's Hospital behaviour already satisfied this; the horizontal case
+had to be corrected twice to match (§96.8 direction, §96.9 below).
+
+**97.3 SNAP THE HORIZONTAL AXIS TO WORLD X OR Y, NOT THE CAMERA DIAGONAL.** User: *"i meant is just X
+or Y depending on angle of cam. And it be less confusing."* An axis-aligned section reads as a
+section; a plane normal taken from the raw camera-forward reads as an arbitrary slice. Implemented by
+comparing |fwd.x| against |fwd.z| (DB X/Y map to scene x/z — the loader's axis swap sends iy -> -z)
+and logged as `worldAxis=` on `§STOREY_CUT_AXIS`. Verified live on HHS: `axis=XY pitchDeg=10.4
+worldAxis=X`.
+
+**97.4 THE SWEEP IS CUMULATIVE ACROSS THE WINDOW — one arrival, not one per slot.** User: *"It is not
+doing it storey by storey! ... If it follows the timings"*. The first horizontal implementation drove
+depth from `cut.k`, which runs 0..1 INSIDE each storey's slot, so the whole sweep restarted every slot
+and the building vanished and rebuilt once per storey. Correct form is `prog = (idx + k) / n`: each
+slot advances the plane one step toward the camera and then holds, so the storey timings pace a single
+arrival. The vertical axis never had this bug — its cut Z climbs the storey ladder cumulatively by
+construction — which is why the two axes disagreed and why §97.2's "one beat" framing is the test any
+future change must pass.
+
+**97.5 AXIS-CHOICE THRESHOLD — do not replace 25deg with a strict dominant-axis rule.** A strict
+"whichever of Z/X/Y the camera most aligns with" flips where |fwd.y| overtakes the horizontal
+magnitude, i.e. at exactly 45deg. Hospital's reveal rig measures 45.7deg drifting to 47.2deg across
+its window (§93.5) — 0.7deg from the boundary and on it for the whole beat. The 25deg threshold
+expresses the same intent without that instability; Terminal (-2.0deg) and HHS (10.4deg) are nowhere
+near either boundary.
