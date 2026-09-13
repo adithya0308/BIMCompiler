@@ -7,6 +7,13 @@ original derivation/measurement behind a bullet below; both consolidations happe
 kept growing past ~2,400 lines (2026-09-06, then again 2026-09-11 at 4,669) — do that again on sight,
 don't wait to be asked (CLAUDE.md's own standing housekeeping rule).
 
+**ONE-LINE STATE (2026-09-13 hand-off):** the closing storey reveal is now a per-storey SECTION CUT
+(storey = outer loop, reverse sweep = inner loop, axis derived from the camera: Hospital Z, HHS/Terminal
+X-or-Y) — code in worktree `/tmp/wt-storey-cut` on branch `feat/storey-section-cut` (`d51362c3`, local
+only), spec in §98-§100 below, user verdict LOCKED: **no tint, no fade, no darkening, no lit edge, no
+rake, clash/Sanity layers stay on**; last deliverables in `~/Downloads/Hospital_reveal_noedge_*.mp4`
+and `HHS_reveal_*.mp4`, frames in `/tmp/wt-storey-cut/out/cutframes/`.
+
 **New session, in this order:**
 1. **§91.4 BEFORE running any bake** — every bake goes through `./bake_scope.sh` or it kills your
    session (§91: three consecutive deaths on 2026-09-13; §91.7: a scope also OUTLIVES a killed
@@ -5662,6 +5669,18 @@ measured D/H/n so the prediction is checkable against what the bake computes.
 on a NEAR-HORIZONTAL cut with a slight tilt — geometrically the Z cut raked a few degrees, not the
 vertical X/Y sweep. Which means §99.6's axis question may answer itself: at these tilts the two axes
 are the same plane with different rake, and there is nothing left to choose between.
+
+**100.6 VERDICT — MEASURED, THEN DROPPED BY THE USER. LOCKED, do not re-propose.** Baked on HHS:
+`§STOREY_CUT_RAKE k=7.14 tiltFromHorizontalDeg=8.0 overlap=0.2 D=68.2 H=15.3 n=3`, sweeping
+continuously (prog 0.002 -> 0.336 -> 0.670). The prediction in §100.3 held in shape (8.0deg against
+~10deg predicted; the gap was H, estimated 20 m against a real band height of 15.3 m). It still FAILS
+on frames, exactly as §100.5 warned: at prog 0.34 the stat card reads "Level 2" while the picture is
+ONE DIAGONAL SLICE through the whole building — no storey is being revealed; the opening frames are
+near-empty because a single sweep spread across the window takes most of the beat to arrive; and the
+plane slices the context city diagonally too. The tilt IS what removes the discreteness, so one plane
+cannot give overlap AND storey identity. The user's words: *"The rake seems ugly and cheap or done the
+way i meant. Drop that for simplicity."* `CUT_RAKE_OVERLAP = null` (`d51362c3`). The code path stays
+only so the finding is reproducible.
 
 **100.5 WITH THE RAKE ON THERE ARE NO BANDS AND NO PAUSES.** One plane, `clipIntersection` off, global
 array empty — the tilt alone gives every storey its turn, so the motion never stops. The slab still
