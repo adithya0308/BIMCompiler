@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: full
+          ref: master
 
       - name: Collect traffic data
         env:
