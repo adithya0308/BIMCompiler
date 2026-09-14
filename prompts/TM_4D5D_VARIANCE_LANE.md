@@ -424,9 +424,28 @@ EVERY page load. "One time" is true for small/medium buildings and FALSE for the
 not a nicety — it is the only mechanism that works, because the client-side one is capped out. The two
 shipped DBs that DO carry a schedule (`Hospital_silent.db`, `HHS_Office_Federated_silent.db`) were baked,
 not injected, which is the same conclusion arrived at from the other direction.
-**Do not build injection as the universal answer.** Scope it honestly: injection for buildings whose export
-fits the cap; a baked schedule at publish time for the rest. Decide the split by MEASURING each published
-DB's export size, not by assuming.
+~~**Do not build injection as the universal answer.** Scope it by export size: injection for buildings that
+fit the cap, a baked schedule for the rest.~~
+⚠ **SUPERSEDED the same day — the split was unnecessary, and my own measurement already disproved it.**
+The ~127MiB cap bites on **SAVING**, not on the feature working. `materializeZones` writes into the
+**in-memory** sql.js handle, and that is the same `A.db` the whole read path uses (`info_4d_panel.js:59`
+→ `windowForGuid(A.db, …)`). The cost probe is the proof and it was sitting in front of me: it ran
+`materializeZones` on a db built from a buffer, never persisted anything, and `SELECT COUNT(*) FROM tasks`
+immediately returned **42 leaf tasks / 63,182 task_elements** on Hospital.
+
+⇒ **ONE PATH, NO BUILDING-CLASS SPLIT. Injection works on every building.** What differs is only how long
+the answer survives:
+- **Materialize in memory** — always succeeds, 2,515ms worst case (Hospital). The panel works immediately.
+- **Persist — BEST EFFORT.** Under the cap (HHS 77MB, Duplex 9MB) it saves and survives reload: one time
+  per device. Over it (Hospital ~260MB, JKR ~196MB) the tx aborts and the schedule is **kept for this
+  session** — the user pays 2,515ms once per session instead of once per device.
+- **Say which happened.** "Saved — won't need regenerating" vs "Kept for this session (too large to cache)".
+  Never a silent abort, and never a dead-end "this building needs a baked schedule" message: the feature
+  is working in both cases, only its lifetime differs.
+
+**Baking at publish time stays a real follow-up, but it is now an OPTIMISATION again, not a prerequisite** —
+it saves Hospital/JKR users 2.5s per session. It does NOT gate S7. (And it remains the reason both shipped
+schedule-carrying DBs were baked, not injected.)
 
 **UI ruling (user, 2026-09-14): a progress bar, not a spinner.** At 2.5s on Hospital, and with a persist
 step that can fail, the action needs to show real stages ("materializing… / saving…") and REPORT the
@@ -438,8 +457,9 @@ device, and now the ONLY remaining unknown. §S7-INJECT-WHERE above now predicts
 buildings (an abort over the ~127MiB single-value cap) — so what is owed is the CONFIRMATION, in a real
 browser, reading the §SCHED_PERSIST / §SCHED_PERSIST_ERR log line per building, plus the wall time for the
 ones that do fit. New witness: **W-S7-INJECT-PERSIST** — for each fleet DB, injection either logs
-§SCHED_PERSIST ok with a size, or logs the abort and the UI SAYS SO. *Proves "one time" is a per-building
-claim backed by a log line, not a slogan.*
+§SCHED_PERSIST ok with a size, or logs the abort and the UI SAYS SO — and in BOTH cases `#info-4d` resolves
+a real window afterwards, because the in-memory materialize already succeeded. *Proves the persist outcome
+changes the schedule's LIFETIME and the message, never whether the feature works.*
 
 ### §S7-INJECT-WITNESS
 - **W-S7-INJECT** — on a building with `schedules=0`, injection creates exactly ONE schedule, `#info-4d`
