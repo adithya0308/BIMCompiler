@@ -391,8 +391,52 @@ Sanity check on the output: the template path reproduces Hospital at **42 leaf t
 task_elements**, against the shipped `Hospital_silent.db`'s 42 / 63,415. **The 233-row gap is now EXPLAINED
 — see §S7-BAKE-DRIFT.**
 
-### §S7-BAKE-DRIFT — the 233 rows, chased and closed 2026-09-14. NOT a defect; the SHIPPED DB is stale.
-Diffed the two `task_elements` guid sets directly:
+### §S7-BAKE-DRIFT — ⚠ RETRACTED 2026-09-14, SAME DAY. THE 233 ROWS ARE A DATA GAP IN
+### `Hospital_extracted.db`, NOT CODE DRIFT. DO NOT RE-BAKE THE `_silent` DBs.
+The original entry (below, struck) concluded that current code had stopped scheduling aggregate
+containers, that the shipped artefact was therefore stale, and recommended re-baking both `_silent` DBs.
+**All three conclusions were wrong.** Measured before acting on the recommendation:
+
+1. **Current code reproduces the shipped output EXACTLY.** Re-running `materializeZones` on
+   `Hospital_silent.db` itself, at its own start epoch and its own `gen_version`, gives **41 leaf tasks /
+   63,415 task_elements — identical to what is already in the file.** Nothing dropped. There is no code
+   drift to re-bake away.
+2. **The comparison that produced "233" was apples-to-oranges.** I diffed a fresh materialize of
+   `Hospital_extracted.db` against the shipped `Hospital_silent.db` and attributed the difference to code.
+   They are two different files.
+3. **The actual cause, and it is a one-line fact:** `element_transforms` coverage.
+
+   | DB | elements_meta | element_transforms | aggregates with a transform |
+   |---|---|---|---|
+   | `Hospital_silent.db` | 64,150 | **64,150** (complete) | 263 |
+   | `Hospital_extracted.db` | 64,150 | **63,917** | 30 |
+
+   64,150 − 63,917 = **233**, exactly the gap. `materializeZones` can only schedule an element it has
+   geometry for, so those 233 aggregate-class rows (`IfcCurtainWall` 178 · `IfcRoof` 24 · `IfcStair` 31)
+   drop out of the `_extracted` run. **`Hospital_silent.db` is not stale — it is MORE COMPLETE.**
+
+**⛔ AND RE-BAKING WOULD HAVE CAUSED A REAL REGRESSION.** The probe also showed `display_authored` going
+**1 → 0** on both DBs, because the live path supplies `opts.displayRemap` (a `time_machine.js` closure)
+and a CLI re-bake does not. That flag gates §TM_REVEAL_TILED / §CAP_RESCALE_SKIP. A "harmless refresh of a
+shipped artefact" would have silently changed how both movie-bake DBs render. Checking the premise before
+executing the recommendation is the only reason that did not ship.
+
+**WHAT IS ACTUALLY TRUE, and it is small:** `Hospital_extracted.db` is missing `element_transforms` for 233
+aggregate-container elements. That is a completeness gap in the EXTRACTED db, owned by whatever lane
+produces it — not a scheduling defect, not a bake defect, and not S7's business. Reported, not chased.
+**`HHS_Office_Federated_silent.db` carries `gen_version` 38 against the current 39**, so the EXISTING
+§GANTT_SCHEDULE_STALE mechanism already flags it and will regenerate it on load — working as designed.
+(Current code on it yields 16 leaf tasks against its stored 20, with identical element coverage: 6,880.)
+
+**METHOD NOTE, the durable part.** This is the third time this session a plausible number stood in for a
+measurement: `materializeDefault` timed instead of the template path; a code comment's ~127MiB cap turned
+into a prediction; and now a cross-file diff read as code drift. All three were caught, but only because
+something forced a re-check. The rule §S7-INJECT-WHERE already earned — *a number that decides scope gets
+measured before it decides anything* — extends here: **a DIFF that decides scope must hold every variable
+but one.** I diffed two files and one code version at once, then blamed the code.
+
+<details><summary>⛔ ORIGINAL, RETRACTED TEXT — kept for the reasoning, not the conclusion</summary>
+
 - **`onlyInFresh = 0`.** The fresh materialize is a strict SUBSET — nothing new appeared, 233 elements
   dropped OUT. That alone rules out "the new code invents work".
 - **The 233 are: `IfcCurtainWall` 178 · `IfcRoof` 24 · `IfcStair` 31** — every one an AGGREGATE CONTAINER
@@ -411,6 +455,8 @@ the executed table, and every probe measuring the mirror). **RECOMMENDED: re-bak
 `HHS_Office_Federated_silent.db` from current code, stamping `gen_version`, and re-run the S7 set against
 the re-baked pair.** Not actioned here — re-baking a shipped artefact is a publishing decision, and it
 belongs to whatever lane owns the bake, not to a UI stage.
+
+</details>
 
 ### §S7-MULTI-TASK — the uncovered branch: RECOMMENDATION IS DO NOT WRITE THE WITNESS.
 `windowForGuid`'s multi-task-per-guid branch has no test. `task_elements`' PK is `(task_id, guid)` so the
