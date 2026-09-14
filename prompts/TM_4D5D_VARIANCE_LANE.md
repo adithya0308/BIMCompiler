@@ -371,15 +371,31 @@ rates.js EXECUTED table, sql.js in node; DB loaded from a buffer, nothing writte
 | `JKR_extracted.db` | 194MB | 9,410 | 131ms | 95ms → 195MB |
 | `Duplex_extracted.db` | 9MB | 1,193 | 13ms | 5ms → 9MB |
 
-**Verdict on the trigger: lazy injection on first need is viable** — 581ms worst case on the biggest
-building in the fleet, not the multi-second freeze §SE-7c's history warned about. Show a status cue anyway.
+~~**Verdict: lazy injection on first need is viable** — 581ms worst case.~~
+⚠ **OVERTURNED 2026-09-14 by PART 2 — the number above was for the WRONG FUNCTION.** §S7-GRAIN requires
+the TEMPLATE path, and it was never timed. Measured now (`scratchpad/probe_tpl_cost.js`, same method,
+`4D_template.json` v1.2.0, side-by-side on one tree):
 
-**⚠ TWO LEGS OF THIS ARE STILL UNMEASURED — do not treat 581ms as the whole cost:**
-1. **The template path was not timed**, only `materializeDefault`. It does strictly more work (42 tasks vs
-   7, plus `deriveBandRanks`). Time it before wiring; the verdict above may not survive it.
-2. **`persistDb`'s real write is not the 91ms `export()`.** That is serialisation to a buffer in node. The
-   browser then writes **259MB** into IndexedDB/OPFS — an entirely different cost on a real device, and the
-   one most likely to bite. Measure it in the browser, read the log, before promising "one time, instant".
+| DB | elements | `materializeZones`+template | leaf tasks | `materializeDefault` | leaf tasks |
+|---|---|---|---|---|---|
+| `Hospital_extracted.db` | 64,150 | **2,515ms** | 42 | 500ms | 7 |
+| `JKR_extracted.db` | 9,410 | 739ms | 24 | 137ms | 6 |
+| `Clinic_extracted.db` | 17,322 | 685ms | 35 | 133ms | 7 |
+| `Duplex_extracted.db` | 1,193 | 156ms | 19 | 14ms | 7 |
+
+The template path is **~5x** `materializeDefault` and **2.5s on Hospital** — over the ≲1s bar this spec
+set for a lazy trigger. ⇒ **Injection MUST be the pill's explicit one-time action ("Generate programme")
+with the existing status/progress surface. It must NOT sit on a hover or first-pick path.** Still one
+click, still one time — never a silent 2.5-second freeze on a mouse gesture.
+Sanity check on the output: the template path reproduces Hospital at **42 leaf tasks / 63,182
+task_elements**, against the shipped `Hospital_silent.db`'s 42 / 63,415. The 233-row gap is NOT explained
+here — noted, not chased; it is a real difference between a fresh materialize and the shipped artefact.
+
+**⚠ ONE LEG STILL UNMEASURED — `persistDb`'s real write.** The 91-99ms `export()` above is serialisation
+to a buffer in node. The browser then writes **~260MB** into IndexedDB/OPFS — a different cost on a real
+device, and now the ONLY remaining unknown. It no longer changes the trigger DESIGN (part 2 already settled
+that: explicit pill action), but it decides whether that action needs a progress bar or just a spinner.
+Measure it in the browser and read the log before promising anything about how long the one time takes.
 
 ### §S7-INJECT-WITNESS
 - **W-S7-INJECT** — on a building with `schedules=0`, injection creates exactly ONE schedule, `#info-4d`
@@ -390,9 +406,9 @@ building in the fleet, not the multi-second freeze §SE-7c's history warned abou
   own schedule — the data-loss case this feature would otherwise introduce.*
 - **W-S7-INJECT-HONEST** — the injected row's `name` marks it generated, and `#info-4d` renders that
   distinction. *Proves a generated default never presents as the committed programme.*
-- **W-S7-INJECT-COST** — ⬛ PART 1 DONE (table above: 581ms worst-case materialize on Hospital's 64,150
-  elements). STILL OWED: the template path's own wall time, and `persistDb`'s real browser write of a
-  259MB DB into IndexedDB/OPFS. *Proves which trigger design is honest; a design chosen without the
+- **W-S7-INJECT-COST** — ✅ PARTS 1+2 DONE (tables above). Part 2 OVERTURNED part 1's verdict: the
+  template path is 2,515ms on Hospital, so injection is an explicit pill action, not a lazy trigger.
+  STILL OWED: `persistDb`'s real browser write of a ~260MB DB into IndexedDB/OPFS. *Proves which trigger design is honest; a design chosen without the
   remaining two numbers is still a guess.*
 - **W-S7-TASK-GRAIN** — for a real building, the number of DISTINCT `(schedule_start, schedule_finish)`
   windows is the task count, not the element count (Hospital: 41 windows over 63,415 elements), and
@@ -438,7 +454,27 @@ whether `_showClassCost` gets wired symmetrically at the same time — that woul
 1. wire 4D only — S7 works on a canvas click, S2's cost stays Find-only (asymmetric, but changes nothing shipped);
 2. wire both — consistent, but S2's surface silently widens;
 3. leave as-is — S7 stays Find-gated, matching S2 exactly.
-⛔ NOT ACTIONED — awaiting the user's pick.
+✅ **RESOLVED 2026-09-14 — user picked option 1. bim-ootb PR #1735, W-S7-CANVAS-PICK 14/14.**
+- **My "~2 lines at picking.js:626" estimate above was WRONG.** `find_erp_push.js` lives inside
+  `APP.loadNavigate()`'s LAZY bundle (`main.js` ~:187), so `A._show4DWindow` does not EXIST until Find
+  has been opened — calling it from `picking.js` would have no-oped exactly as before. The renderer had
+  to leave the lazy bundle first. `viewer/info_4d_panel.js` is that extraction (eager in `viewer.html`);
+  `_show4DWindow` is now a delegating seam. One renderer, two call sites, never a second copy.
+- **Option 1's boundary is GATED, not merely intended:** the witness asserts `#info-cost` stays hidden on
+  a canvas click, so S2's shipped cost surface cannot widen by accident later.
+- **The load-order assertion is the whole point of that witness.** It asserts
+  `APP._show4DWindow === undefined` BEFORE the click and again after. Without it the test would pass with
+  the fix reverted — any incidental Find load would supply the renderer — i.e. it would gate nothing.
+- Real click rendered `Architecture Envelope — Level 3 · 2026-09-28 → 2026-10-01`, Find bundle never
+  loaded. Occlusion-safe: it clicks candidate pixels until one lands and asserts on whatever resolved,
+  because demanding a specific guid would test camera framing, not the wire.
+- **TWO PRE-EXISTING DEFECTS found on the way, neither introduced by the fix.** (a) §SQLJS_MISSING again
+  (PR #1730's class): all four S7 node witnesses used a bare `require('sql.js')`, which resolves only when
+  a `node_modules` happens to sit above the file — **a fresh worktree has none, so they were unrunnable
+  outside the shared checkout** and had only ever been run where one existed. (b) The Node path has no
+  `window`: the first cut of the delegating seam looked it up there and broke two witnesses headlessly.
+  Both fixed in the same PR. Lesson worth keeping: "the witness passed" meant "passed where it was
+  written", not "passed anywhere" — the full suite now runs in a CLEAN worktree, 71 checks / 0 fail.
 
 ### §S7-NOT-DOING (recorded so it isn't re-proposed)
 **A pop-up panel on hover.** It must chase the cursor, re-render on every target change, and stay
@@ -639,5 +675,5 @@ S1 W-PC-TWIN-SOURCE · W-PC-DRAWER  |  S2 W-PC-PANEL · W-PC-JUNCTURE · W-PC-HO
 S4 W-SHOP-ELEMENTS · W-SHOP-BATCH · W-SHOP-SCURVE · W-SHOP-DATES · W-SHOP-SOURCE  |  S5 W-PC-EARN  |  S6 W-WHATIF ✅13/13  |
 S7 W-S7-WINDOW ✅13/13 · W-S7-GRAIN · W-S7-GATE · W-S7-HOVER-BUDGET · W-S7-INJECT · W-S7-INJECT-GUARD ·
 W-S7-INJECT-HONEST · W-S7-INJECT-COST ⬛part1 | S7 legs 2-4 ✅ W-S7-TASK-GRAIN 12/12 ·
-W-S7-GRAIN 10/10 · W-S7-GATE 22/22 · W-S7-HOVER-BUDGET 9/9
+W-S7-GRAIN 10/10 · W-S7-GATE 22/22 · W-S7-HOVER-BUDGET 9/9 · W-S7-CANVAS-PICK 14/14 ✅#1735
 PHASE 2 (the wedge): W0=S5 W-PC-EARN (keystone) | W1 W-EAC | W2 W-CLAIM-CERT | W3 W-COCKPIT-LOOP
