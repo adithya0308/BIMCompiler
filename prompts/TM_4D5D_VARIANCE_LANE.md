@@ -391,11 +391,55 @@ Sanity check on the output: the template path reproduces Hospital at **42 leaf t
 task_elements**, against the shipped `Hospital_silent.db`'s 42 / 63,415. The 233-row gap is NOT explained
 here — noted, not chased; it is a real difference between a fresh materialize and the shipped artefact.
 
-**⚠ ONE LEG STILL UNMEASURED — `persistDb`'s real write.** The 91-99ms `export()` above is serialisation
+### §S7-INJECT-WHERE — WHERE AN INJECTED SCHEDULE ACTUALLY LIVES (user question, 2026-09-14: "does it
+### have to be in the embedded DBs or is this just a test?"). Read before promising "one time".
+**It is not a test — and it is not in the embedded DBs either. It is IndexedDB, per browser profile.**
+`persistDb` (`schedule_author.js:3097`) exports the WHOLE db and `put()`s that single buffer into the
+`dbs` object store of the building cache, keyed by `DbResolve.cacheKey(url)` — the same key `scene.js`'s
+`cachedFetch` reads. So:
+- ✅ It genuinely survives a reload, on that device, in that browser profile. Real, not a demo.
+- ❌ It NEVER reaches the published/embedded DB. Those are static objects in the OCI bucket; a browser
+  cannot write to them. Every user injects their own, and pays the cost themselves.
+- ❌ It is evictable. `scene.js:539` says outright the browser "is free to silently evict the whole
+  origin's IndexedDB, and a 251MB building blob is the first thing it" goes for; §S260b keeps only 80
+  entries, LRU.
+
+**⛔ AND ON THE BIGGEST BUILDINGS IT WILL PROBABLY NOT PERSIST AT ALL.** `persistDb`'s own comment
+(`schedule_author.js:3130`) names the mechanism: Chrome ABORTS a transaction on "a single IDB value over
+~127MiB (a big building's meta.db can reach it)". Measured sizes against that cap:
+
+| building | export size | vs ~127MiB IDB single-value cap |
+|---|---|---|
+| Hospital | **~260MB** (shipped `Hospital_silent.db` is **301MB**) | **~2x OVER — expect `§SCHED_PERSIST_ERR abort`** |
+| JKR | ~196MB | OVER |
+| Clinic | ~125MB | at the line |
+| HHS | 77MB | under — persists fine |
+| Duplex | 9MB | under |
+
+⇒ On Hospital, injection would spend 2,515ms materializing and then fail to save, silently recomputing on
+EVERY page load. "One time" is true for small/medium buildings and FALSE for the flagship one.
+
+**⇒ THIS PROMOTES THE BAKE-AT-PUBLISH FOLLOW-UP FROM OPTIMISATION TO REQUIREMENT.** §S7-DATA-REALITY parked
+"should published DBs ship WITH a baked schedule?" as a separate lane. For Hospital-scale buildings it is
+not a nicety — it is the only mechanism that works, because the client-side one is capped out. The two
+shipped DBs that DO carry a schedule (`Hospital_silent.db`, `HHS_Office_Federated_silent.db`) were baked,
+not injected, which is the same conclusion arrived at from the other direction.
+**Do not build injection as the universal answer.** Scope it honestly: injection for buildings whose export
+fits the cap; a baked schedule at publish time for the rest. Decide the split by MEASURING each published
+DB's export size, not by assuming.
+
+**UI ruling (user, 2026-09-14): a progress bar, not a spinner.** At 2.5s on Hospital, and with a persist
+step that can fail, the action needs to show real stages ("materializing… / saving…") and REPORT the
+persist result rather than looking done when the save aborted.
+
+**⚠ THE REMAINING UNMEASURED LEG — `persistDb`'s real write.** The 91-99ms `export()` above is serialisation
 to a buffer in node. The browser then writes **~260MB** into IndexedDB/OPFS — a different cost on a real
-device, and now the ONLY remaining unknown. It no longer changes the trigger DESIGN (part 2 already settled
-that: explicit pill action), but it decides whether that action needs a progress bar or just a spinner.
-Measure it in the browser and read the log before promising anything about how long the one time takes.
+device, and now the ONLY remaining unknown. §S7-INJECT-WHERE above now predicts the ANSWER for the big
+buildings (an abort over the ~127MiB single-value cap) — so what is owed is the CONFIRMATION, in a real
+browser, reading the §SCHED_PERSIST / §SCHED_PERSIST_ERR log line per building, plus the wall time for the
+ones that do fit. New witness: **W-S7-INJECT-PERSIST** — for each fleet DB, injection either logs
+§SCHED_PERSIST ok with a size, or logs the abort and the UI SAYS SO. *Proves "one time" is a per-building
+claim backed by a log line, not a slogan.*
 
 ### §S7-INJECT-WITNESS
 - **W-S7-INJECT** — on a building with `schedules=0`, injection creates exactly ONE schedule, `#info-4d`
@@ -674,6 +718,6 @@ which is COARSER than a scheduler-authored task grid. Do not pitch S7 as finer-g
 S1 W-PC-TWIN-SOURCE · W-PC-DRAWER  |  S2 W-PC-PANEL · W-PC-JUNCTURE · W-PC-HONEST  |  S3 W-4DGEN  |
 S4 W-SHOP-ELEMENTS · W-SHOP-BATCH · W-SHOP-SCURVE · W-SHOP-DATES · W-SHOP-SOURCE  |  S5 W-PC-EARN  |  S6 W-WHATIF ✅13/13  |
 S7 W-S7-WINDOW ✅13/13 · W-S7-GRAIN · W-S7-GATE · W-S7-HOVER-BUDGET · W-S7-INJECT · W-S7-INJECT-GUARD ·
-W-S7-INJECT-HONEST · W-S7-INJECT-COST ⬛part1 | S7 legs 2-4 ✅ W-S7-TASK-GRAIN 12/12 ·
+W-S7-INJECT-HONEST · W-S7-INJECT-PERSIST · W-S7-INJECT-COST ✅parts1+2 | S7 legs 2-4 ✅ W-S7-TASK-GRAIN 12/12 ·
 W-S7-GRAIN 10/10 · W-S7-GATE 22/22 · W-S7-HOVER-BUDGET 9/9 · W-S7-CANVAS-PICK 14/14 ✅#1735
 PHASE 2 (the wedge): W0=S5 W-PC-EARN (keystone) | W1 W-EAC | W2 W-CLAIM-CERT | W3 W-COCKPIT-LOOP
