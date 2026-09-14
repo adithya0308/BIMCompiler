@@ -75,8 +75,14 @@ Hypothesis 1 blamed missing Playwright binaries for "the bulk of the 167". Measu
 was right AND was acted on — §9b/§13/§15 are WARN now. But the checks that actually produce the
 failures were never separated, because nobody counted them by section.
 
-## The measured breakdown — run `34907896124`, 150 failed of 558. Reproduced LOCALLY, identically
-(same 94/36/6/5/4/3/1 split), so none of it is a CI-environment artifact.
+## The measured breakdown — run `34907896124`, 150 failed of 558. Reproduced LOCALLY, and the ONE
+## difference is itself the proof.
+
+Local `CI=1 node deploy/dev/test_all.js`: **exit 1, 149 failed of 561** — every section below matches
+CI's count exactly (94/36/6/5/4/3/1), so none of it is a CI-environment artifact. The single
+discrepancy is §14, which fails in CI and PASSES locally: that is precisely the `spawnSync ETIMEDOUT`
+already classified as runner env, and it accounts for the whole 150-vs-149 gap. (561 vs 558 checks:
+the local run was on `fable/meshdb-livewire`, which carries 3 more checks than master.)
 
 | n | section | verdict |
 |---|---|---|
