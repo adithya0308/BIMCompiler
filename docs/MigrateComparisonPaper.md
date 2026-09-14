@@ -511,6 +511,17 @@ Full doctrine + the hard multi-writer cases (shared stock, credit limits, client
 ---
 
 <div class="blurb" markdown="0">
+  <div class="hook">Fold and local-first are two separate ideas. We're the intersection, not the inventors of either.</div>
+  <div class="teaser">Event sourcing (the log is truth) predates the browser by decades — CQRS, EventStoreDB, Datomic, git. Local-first (the client is authoritative, not a server) is a distinct, newer claim. Checked against the field, 2026-05-31: two systems already occupy the exact intersection we do.
+    <input type="checkbox" id="m-priorart" class="moretoggle">
+    <span class="rest">The two ideas are independently variable: most event-sourced systems run <i>on a server</i> (Axon, EventStoreDB); most local-first systems stay consistent with a <i>CRDT</i>, not a fold (Automerge, Yjs). What we do — <b>use a fold as the local-first consistency mechanism, instead of a CRDT</b> — is a specific, narrower intersection, and we are not first into it: <a href="https://github.com/orbitinghail/sqlsync">SQLSync</a> already ships "one deterministic reducer, both sides" — our core determinism lever — and <a href="https://livestore.dev/">LiveStore</a> already ships "event-log folds into reactive client SQLite" — our data-layer shape. Neither combines BIM geometry and a full ERP under one log, reduces iDempiere's ~925 AD tables to 5 relations + verbs, or hash-chains the log for tamper evidence. CRDTs (Automerge/Yjs, cr-sqlite) hit a documented ceiling by the field's own literature — they cannot enforce a business invariant like "don't double-allocate this pallet" — which is why money-touching ops stay on the deterministic kernel; the CRDT primitive is kept only where it's safe: geometry edits, which have no double-spend risk. Notion validated SQLite-WASM at real production scale (Web Worker + OPFS) — but chose server-of-record + disposable local projection, the opposite of a local-authoritative stance. Full per-system breakdown and sources: <a href="LocalFirstPriorArt.md">Local-First Prior Art</a>. <a class="serious" href="#v-priorart">Serious read</a></span>
+    <label for="m-priorart" class="morelnk"></label>
+  </div>
+</div>
+
+---
+
+<div class="blurb" markdown="0">
   <div class="hook">Zero round-trips on the read path. Up to ~50,000× faster cross-region.</div>
   <div class="teaser">An ERP normally crosses the network for every gesture. The kernel answers locally and relays later — so the real win isn’t faster storage, it’s no network on the hot path.
     <input type="checkbox" id="m-vitals" class="moretoggle">
@@ -570,6 +581,27 @@ Full doctrine + the hard multi-writer cases (shared stock, credit limits, client
 <div class="fbd" markdown="1">
 
 The long read — the same topics as the blurbs above, in full: the tables, the witnesses, the honest caveats. Each **Serious read →** lands here.
+
+### Prior art — where this sits vs the field — serious read {#v-priorart}
+
+**Two separate ideas, checked against the field independently.** *Event sourcing* (the log is truth, state = replay) predates the browser by over a decade — CQRS (Greg Young, ~2010), EventStoreDB, Datomic, git itself. *Local-first* (the client, not a server, is authoritative) is a distinct, newer claim (Kleppmann / Ink & Switch, 2019). The two are independently variable — most event-sourced systems run server-side; most local-first systems stay consistent with a CRDT, not a fold. What this architecture does is the specific intersection: **a fold, used as the local-first consistency mechanism, in place of a CRDT.** Researched 2026-05-31 (sync engines), extended 2026-06-03 (SQLite-WASM at scale). Full detail, every source: [Local-First Prior Art](LocalFirstPriorArt.md).
+
+<div class="dtbl" markdown="1">
+
+| System | What it does | Where it's ahead of us | What it lacks that we don't |
+|---|---|---|---|
+| **SQLSync** ([source](https://github.com/orbitinghail/sqlsync)) | Rust reducer compiled to WASM, identical client/server — our exact determinism lever, shipped first | real multi-writer total order (server sequences, client rebases) — we only order by local id | tamper evidence (no hash chain/sign); reducer is opaque compiled WASM, not plain JS over real SQL |
+| **LiveStore** ([source](https://livestore.dev/)) | event-log folds into reactive client SQLite — our data-layer shape | — | BIM+ERP unification; a domain reduction (AD → 5 tables); still beta, needs a sync backend |
+| **cr-sqlite** ([source](https://github.com/vlcn-io/cr-sqlite)) | row-level CRDT, no sequencer needed | true decentralized multi-writer, no server at all | cannot enforce a business invariant — converges to a consistent but *wrong* number (e.g. a double-allocated pallet). Right primitive for our geometry ops only; never routed through `Fact_Acct` |
+| **Replicache / PowerSync / ElectricSQL** | optimistic client + server-authoritative reconciliation | mature, production-hardened, hosted | all three require a server of record; none has a true zero-server mode; conflict logic hand-coded per mutation |
+| **Automerge / Yjs (CRDTs)** | mathematical guaranteed convergence, no referee | no central sequencer needed at all | same invariant ceiling as cr-sqlite, by the field's own literature |
+| **Notion** ([blog](https://www.notion.com/blog/how-we-sped-up-notion-in-the-browser-with-wasm-sqlite)) | SQLite-WASM in a Web Worker + OPFS, at real production scale | validates the storage tier works at scale | chose server-of-record + disposable local projection — the opposite of local-authoritative |
+
+</div>
+
+**The honest verdict.** On the determinism lever alone, SQLSync got there first. On the data-layer shape alone, LiveStore is nearly identical. **No single technique here is novel in isolation.** What none of them do: put BIM geometry and a full ERP under the same log, reduce a 925-table Application Dictionary to 5 relations + verbs, or hash-chain and sign the log for tamper evidence. That combination — not any one lever — is the gap being filled.
+
+**Borrowed, not invented, for the next phase (§0.20):** SQLSync's rebase loop is the target design for multi-writer ordering (`sealChain()`'s full-recompute already makes a post-rebase re-seal cheap); cr-sqlite's site-id + logical-clock merge is the right fit for the geometry half of the log — kept away from money postings, which stay on the deterministic kernel.
 
 ### Disaster recovery &amp; TCO — serious read {#v-dr}
 
