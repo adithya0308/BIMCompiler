@@ -388,8 +388,40 @@ set for a lazy trigger. ⇒ **Injection MUST be the pill's explicit one-time act
 with the existing status/progress surface. It must NOT sit on a hover or first-pick path.** Still one
 click, still one time — never a silent 2.5-second freeze on a mouse gesture.
 Sanity check on the output: the template path reproduces Hospital at **42 leaf tasks / 63,182
-task_elements**, against the shipped `Hospital_silent.db`'s 42 / 63,415. The 233-row gap is NOT explained
-here — noted, not chased; it is a real difference between a fresh materialize and the shipped artefact.
+task_elements**, against the shipped `Hospital_silent.db`'s 42 / 63,415. **The 233-row gap is now EXPLAINED
+— see §S7-BAKE-DRIFT.**
+
+### §S7-BAKE-DRIFT — the 233 rows, chased and closed 2026-09-14. NOT a defect; the SHIPPED DB is stale.
+Diffed the two `task_elements` guid sets directly:
+- **`onlyInFresh = 0`.** The fresh materialize is a strict SUBSET — nothing new appeared, 233 elements
+  dropped OUT. That alone rules out "the new code invents work".
+- **The 233 are: `IfcCurtainWall` 178 · `IfcRoof` 24 · `IfcStair` 31** — every one an AGGREGATE CONTAINER
+  class. A curtain wall aggregates its `IfcPlate`/`IfcMember` panels and mullions; a stair aggregates its
+  `IfcStairFlight`s; a roof aggregates its slabs. Their PARTS are still scheduled — only the container is
+  no longer scheduled alongside them.
+- **`schedules.gen_version`: shipped = 39, fresh = null** (injection does not stamp one). So the shipped
+  artefact was baked by OLDER scheduling code, and current code deliberately stopped double-counting a
+  container against its own parts.
+⇒ **Expected drift, in the right direction.** No code change owed.
+
+**⚠ BUT THE STALE ARTEFACT IS ITS OWN RISK, AND THIS LANE HAS BEEN BITTEN BY EXACTLY IT BEFORE.**
+`Hospital_silent.db` is the DB every S7 witness measures against. It now encodes behaviour current code no
+longer produces — which is the §RULES_TABLE_SOURCE trap in a different costume (a mirror that drifted from
+the executed table, and every probe measuring the mirror). **RECOMMENDED: re-bake `Hospital_silent.db` and
+`HHS_Office_Federated_silent.db` from current code, stamping `gen_version`, and re-run the S7 set against
+the re-baked pair.** Not actioned here — re-baking a shipped artefact is a publishing decision, and it
+belongs to whatever lane owns the bake, not to a UI stage.
+
+### §S7-MULTI-TASK — the uncovered branch: RECOMMENDATION IS DO NOT WRITE THE WITNESS.
+`windowForGuid`'s multi-task-per-guid branch has no test. `task_elements`' PK is `(task_id, guid)` so the
+schema permits it; MEASURED max is 1 in both real DBs, i.e. it does not happen today. Covering it would
+require inserting a synthetic `task_elements` row — fabricated input, which the Prime Directive forbids.
+**Leave it uncovered, deliberately, and say so.** The branch is already deterministic
+(`ORDER BY t.schedule_start ASC, t.task_id ASC` = the first real work the element is part of) and already
+logs `§4D_ON_ELEMENT_MULTI` when it fires. That log IS the detector. If it ever appears in a real run,
+THAT is the moment to write the witness — against the real data that produced it. A test built on a row no
+building has ever contained would assert a behaviour nobody has observed, and would quietly become the
+spec for it.
 
 ### §S7-INJECT-WHERE — WHERE AN INJECTED SCHEDULE ACTUALLY LIVES (user question, 2026-09-14: "does it
 ### have to be in the embedded DBs or is this just a test?"). Read before promising "one time".
