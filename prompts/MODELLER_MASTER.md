@@ -47,11 +47,18 @@ MATHS side only — its own header says so. Grep found no witness asserting expo
 with anchors present. That is a grep, not a proof: read the two code paths before you either fix it or
 close it.
 
-**HYGIENE, owed at closeout by `CLAUDE.md` and not done:** **22 `/tmp/wt-*` worktrees** are outstanding
-across both repos. The last session pruned only the 5 it created. For each, check `ahead`
-(`git rev-list --count origin/<branch>..<branch>`) and `dirty` (`git status --short`); prune only when both
-are 0 — a worktree with unpushed commits or uncommitted changes is someone's in-progress work. The two
-dagevu ones named above are already confirmed prunable.
+**HYGIENE — swept 2026-09-15, partly done, and the remainder is NOT yours to prune.** The sweep ran over
+all 22 outstanding `/tmp/wt-*` worktrees: **14 pruned** (the 5 this session created, plus 9 verified
+`ahead=0 dirty=0` — including both dagevu ones). **13 remain, and every one of them holds real work:**
+
+| state | worktrees | why it stays |
+|---|---|---|
+| unpushed commits (`no-remote` branch) | `wt-bake-perf` · `wt-batch-class-paint` · `wt-idb-cache-timeout` · `wt-krn-persist-race` · `wt-rule-findings-film` · `wt-storey-cut` · `wt-storey-reveal-list` | the branch was never pushed — pruning DESTROYS the commits |
+| merged but dirty | `wt-bake-schedguard` (3) · `wt-buildup-placed` (27) · `wt-scrapbook` (1) | uncommitted changes on top of a merged branch |
+| ahead and dirty | `wt-88-ab` (56 ahead, 4 dirty) · `wt-v87` (2 ahead, 17 dirty) · `wt-storey-reveal` (73 dirty) | someone's live in-progress work |
+
+**Do not prune any of the 13 without the owner's word.** `wt-storey-cut` alone carries 359 dirty files.
+If you add worktrees, prune YOUR OWN at close (`ahead=0` AND `dirty=0`), and leave these alone.
 
 **METHOD RULES THIS LANE EARNED THE HARD WAY LAST SESSION — they apply here unchanged:**
 - **A number that decides scope gets measured before it decides anything.** Three times in one session a
