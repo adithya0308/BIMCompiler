@@ -404,7 +404,31 @@ here — noted, not chased; it is a real difference between a fresh materialize 
   origin's IndexedDB, and a 251MB building blob is the first thing it" goes for; §S260b keeps only 80
   entries, LRU.
 
-**⛔ AND ON THE BIGGEST BUILDINGS IT WILL PROBABLY NOT PERSIST AT ALL.** `persistDb`'s own comment
+### ⚠ CORRECTION 2026-09-14 — THE ~127MiB ABORT PREDICTION BELOW WAS WRONG. MEASURED, IT DOES NOT HAPPEN.
+W-S7-INJECT-PERSIST ran in a real Chromium (147.x) against the REAL full building DBs — the fixture
+fetches each `.db` whole and `persistDb` resolves true only on `tx.oncomplete`, so these are genuine
+full-size writes, not a trimmed stand-in:
+
+| building | materializeMs | persistMs | wallMs | persisted |
+|---|---|---|---|---|
+| `Duplex_extracted.db` (9.6MB) | 80 | 49 | 130 | **true** |
+| `JKR_extracted.db` (~196MB) | 509 | 498 | 1,009 | **true** |
+| `Hospital_extracted.db` (~252MB) | 2,031 | 688 | 2,728 | **true** |
+
+**Every building persisted. None aborted.** So "one time per device" is true for the WHOLE fleet, Hospital
+included, and the session-only path is a fallback that did not trigger — keep it (older Chrome, quota
+pressure, a loaded device), but do not present it as Hospital's expected outcome.
+
+**HOW I GOT IT WRONG, because the error mode matters more than the number.** I extrapolated from a CODE
+COMMENT (`schedule_author.js:3130`, "Chrome aborts … a single IDB value over ~127MiB") to a prediction
+about Hospital, and wrote it into this spec as a measured-sounding table. It was never measured — the
+section said so itself ("the ONLY remaining unknown") and I built a scope decision on it anyway. That is
+the SAME failure as part 1 of W-S7-INJECT-COST timing the wrong function: a plausible number, taken from
+a real source, standing in for the measurement nobody had run. The comment may predate a Chromium change,
+or describe a condition these writes do not hit; either way it is evidence about the past, not a
+prediction. **The rule this earns: a number that decides scope gets measured before it decides anything.**
+
+**⛔ THE ORIGINAL, NOW-DISPROVEN PREDICTION — kept for the reasoning, not the conclusion:** `persistDb`'s own comment
 (`schedule_author.js:3130`) names the mechanism: Chrome ABORTS a transaction on "a single IDB value over
 ~127MiB (a big building's meta.db can reach it)". Measured sizes against that cap:
 
@@ -416,10 +440,12 @@ here — noted, not chased; it is a real difference between a fresh materialize 
 | HHS | 77MB | under — persists fine |
 | Duplex | 9MB | under |
 
-⇒ On Hospital, injection would spend 2,515ms materializing and then fail to save, silently recomputing on
-EVERY page load. "One time" is true for small/medium buildings and FALSE for the flagship one.
+~~⇒ On Hospital, injection would spend 2,515ms materializing and then fail to save.~~ **DID NOT HAPPEN —
+see the correction above. Hospital persisted in 688ms.**
 
-**⇒ THIS PROMOTES THE BAKE-AT-PUBLISH FOLLOW-UP FROM OPTIMISATION TO REQUIREMENT.** §S7-DATA-REALITY parked
+**⇒ ~~THIS PROMOTES THE BAKE-AT-PUBLISH FOLLOW-UP FROM OPTIMISATION TO REQUIREMENT.~~ It does not — it
+stays an optimisation, worth one 2.7s wall on a first Hospital visit per device.** The paragraph below is
+kept because its OTHER observation is still true and still useful:** §S7-DATA-REALITY parked
 "should published DBs ship WITH a baked schedule?" as a separate lane. For Hospital-scale buildings it is
 not a nicety — it is the only mechanism that works, because the client-side one is capped out. The two
 shipped DBs that DO carry a schedule (`Hospital_silent.db`, `HHS_Office_Federated_silent.db`) were baked,
@@ -570,6 +596,21 @@ same "REPORTS, never silently drops" rule `4D_template.json` states for itself).
 consume its return shape, so building them in parallel would mean inventing that shape. 2-4 are wiring onto
 surfaces that already ship and overlap on `panels.js`/`navigate_find.js` (a worktree isolates the branch,
 NOT line-level conflicts on shared files).
+- ✅ **§S7-INJECT DONE 2026-09-14 — bim-ootb PR #1736** (`feat/s7-inject`, off main `c0131796`). New
+  `viewer/schedule_inject.js`: guards on `activeSchedule(db)===null`, materializes via `materializeZones`
+  + the real live-fetched template (reused through a new `window.tm4DTemplate`, never a second fetch),
+  stamps `schedules.name = 'Default Programme (auto-generated)'` with `schedule_id` left as `SCH_AUTHORED`,
+  persists best-effort, reports honestly through a 2-stage progress bar. The `sched4d` pill's gate moved
+  from "a schedule exists" to "engine capable", so it can offer **Generate programme** when there is none.
+  Witnesses, all re-run independently: **W-S7-INJECT 24/24 · W-S7-INJECT-GUARD 17/17 · W-S7-INJECT-HONEST
+  12/12 · W-S7-INJECT-PERSIST 21/21** (real Chromium, not skipped), with the existing set regression-clean
+  (**W-S7-WINDOW 13 · W-S7-TASK-GRAIN 12 · W-S7-GRAIN 10 · W-S7-GATE 25 · W-S7-CANVAS-PICK 14**) —
+  **148 checks, 0 fail.**
+  - Judgment calls, all sound: the PILL's visibility gate had to change (an invisible pill cannot offer
+    "Generate programme") while `#info-4d`'s own gate is unchanged; the progress bar is 2 real checkpoints
+    rather than fake percentages (non-invent); and `activeSchedule`'s `hasBaseline` only computes when
+    `currentGenVersion` is passed — which injection never does — so the guard queries `task_baseline`
+    directly instead of logging an always-false field. That last one is a real trap worth remembering.
 - ✅ **§S7-DO 2/3/4 DONE 2026-09-13 — bim-ootb PR #1733** (`feat/s7-panel-hover-pill`, off fresh origin/main
   833f8f25). `#info-4d` block + `_show4DWindow`, one extra `hover_name.js` label line, data-gated `sched4d`
   pill, and the cost row's match count now RENDERED (not just logged). Witnesses, all on real fleet DBs, all
@@ -738,6 +779,7 @@ which is COARSER than a scheduler-authored task grid. Do not pitch S7 as finer-g
 S1 W-PC-TWIN-SOURCE · W-PC-DRAWER  |  S2 W-PC-PANEL · W-PC-JUNCTURE · W-PC-HONEST  |  S3 W-4DGEN  |
 S4 W-SHOP-ELEMENTS · W-SHOP-BATCH · W-SHOP-SCURVE · W-SHOP-DATES · W-SHOP-SOURCE  |  S5 W-PC-EARN  |  S6 W-WHATIF ✅13/13  |
 S7 W-S7-WINDOW ✅13/13 · W-S7-GRAIN · W-S7-GATE · W-S7-HOVER-BUDGET · W-S7-INJECT · W-S7-INJECT-GUARD ·
-W-S7-INJECT-HONEST · W-S7-INJECT-PERSIST · W-S7-INJECT-COST ✅parts1+2 | S7 legs 2-4 ✅ W-S7-TASK-GRAIN 12/12 ·
+W-S7-INJECT-HONEST · W-S7-INJECT ✅24/24 · W-S7-INJECT-GUARD ✅17/17 · W-S7-INJECT-HONEST ✅12/12 ·
+W-S7-INJECT-PERSIST ✅21/21 · W-S7-INJECT-COST ✅parts1+2 | S7 legs 2-4 ✅ W-S7-TASK-GRAIN 12/12 ·
 W-S7-GRAIN 10/10 · W-S7-GATE 22/22 · W-S7-HOVER-BUDGET 9/9 · W-S7-CANVAS-PICK 14/14 ✅#1735
 PHASE 2 (the wedge): W0=S5 W-PC-EARN (keystone) | W1 W-EAC | W2 W-CLAIM-CERT | W3 W-COCKPIT-LOOP
