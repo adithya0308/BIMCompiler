@@ -1,10 +1,13 @@
-# ⚠ DO NOT REMOVE — PLUGIN_SYSTEM_LANE scope: implement Fold Engine OSGi-like plugin system. Read the log after every run.
+# ⚠ DO NOT REMOVE — PLUGIN_SYSTEM_LANE scope: Phases A-D shipped; Phase E is a new, narrower bridge. Read the log after every run.
 
 # Fold Engine Plugin System — Implementation Lane
 
-**Status:** NOT STARTED  
-**Priority:** Non-blocking background work  
-**Branch:** start from fresh `origin/main` or a dedicated `feat/plugin-system` branch
+**Status:** Phases A-D **DONE, shipped, live** (see §DONE below — `window.PluginRegistry`/`window.PluginEngine`,
+precached in `erp/sw.js`, wired into `erp/idempiere.html`, three working example bundles under `erp/plugins/`).
+Un-archived 2026-09-15 (was incorrectly marked NOT STARTED — that line was stale; fix it going forward,
+this file drifts easily since "DONE" and the header live far apart). **Phase E (below) is new work, not started.**
+**Priority:** Non-blocking background work
+**Branch:** a dedicated `feat/plugin-adval-bridge` worktree, never the shared `bim-ootb` checkout directly.
 
 ---
 
@@ -212,3 +215,66 @@ CYCLE (`X↔Y`) + semver conflict rejected; kernel_ops audit = 3 install / 3 sta
 Localhost whitebox smoke (`/tmp/wt-plugin/smoke_plugin_pill.js`, Playwright) PASS: scripts load · pill bound from
 manifest · overlay opens via real handler · install→`§PLUGIN-PILL install url=… id=com.example.widget-callout state=ACTIVE`
 · callout contributed + uppercases · reload → rehydrates ACTIVE from IndexedDB.
+
+---
+
+## Phase E — `AD_ModelValidator` table-driven auto-install (2026-09-15, new)
+
+### Why this exists — the gap Phases A-D leave open
+
+Phases A-D built a real, working plugin system — but it is **admin-driven, not AD-driven**: someone pastes a
+bundle URL into the Plugin Engine pill and clicks Install. That is genuinely how iDempiere's *own* OSGi
+plugin deploy works too (drop a JAR, restart) — so Phase D is not wrong, it faithfully mirrors that half of
+iDempiere.
+
+But iDempiere has a **second**, AD-metadata half this lane never touched: the `AD_ModelValidator` **window** —
+an admin adds one row (`Name`, `ModelValidationClass`, `EntityType`), and iDempiere loads that class
+automatically at startup, no separate deploy step. `erp/ad_modelval.js:39`'s `readValidators(db)` already
+reads the real `ad_modelvalidator` table (3 rows: Libero MFG, Fixed Assets, Product Price) — **but nothing
+calls it.** It is a stub wired to nothing, sitting next to a fully-working plugin system it was never
+connected to. That disconnect is Phase E's whole scope.
+
+### The design — recognizable to an iDempiere dev, reusing what already works
+
+| `AD_ModelValidator` column | iDempiere meaning | Phase E meaning (same column, no schema change) |
+|---|---|---|
+| `Name` | human label | same |
+| `ModelValidationClass` | Java FQCN on the classpath | a bundle URL/module path — `PluginRegistry.installBundle()`'s existing input |
+| `EntityType` | scopes core vs custom | **gates auto-install** — see the open question below |
+
+**Mechanism, using only existing pieces, nothing new to build from scratch:**
+`readValidators(db)` → for each row whose `EntityType` clears the gate → `PluginRegistry.installBundle(row.ModelValidationClass)` then `.startBundle(id)`. Both calls already exist (`erp/plugin_registry.js`, Phase A). The bundle itself is an ordinary `.mjs` in the existing `manifest`/`activate`/`deactivate` shape (Phase A spec above) — e.g. `production_validator.mjs` already in `erp/plugins/` is a working example of exactly what a Phase-E-installed bundle would look like; Phase E only changes *how it gets installed* (from an AD table row instead of a pasted URL), not what a bundle is.
+
+### Study this before writing code — open questions a good design must answer first
+
+1. **Does auto-install from a DB row violate "foreign imperative code is a plugin, signed + reversible"**
+   (`erp/plugin_release.js`'s own stated law)? A pasted URL is an explicit admin click; a table row read at
+   boot is not. Decide: does Phase E require the row's bundle to ALSO be enabled via the existing
+   enable/disable surface in `plugin_release.js` before `startBundle` fires — i.e. the AD row *proposes*,
+   the existing Plugin Management UI still *approves*? Leaning yes, but this is the one decision that
+   determines whether Phase E strengthens or quietly bypasses an already-decided security posture. Read
+   `docs/HolyGrail.md`'s "foreign imperative code is a plugin" law in full before deciding, not just this
+   one citing line.
+2. **Idempotency at every boot.** `readValidators()` would run on every load. Confirm `installBundle`/
+   `startBundle` on an already-ACTIVE bundle id is a safe no-op (check `plugin_registry.js`'s lifecycle
+   state machine directly — don't assume) before wiring this in, or every page load re-appends
+   `PLUGIN_INSTALL`/`PLUGIN_START` ops into `kernel_ops` for nothing.
+3. **EntityType scoping.** The 3 real rows (Libero MFG, Fixed Assets, Product Price) are vendor plugins
+   whose Java bodies were correctly never ported (`ERP_COVERAGE_MATRIX.md`'s own "named-deferred" call) —
+   they must NOT auto-install against a nonexistent bundle URL and error at every boot. Only rows an admin
+   has *also* pointed at a real, present bundle should ever attempt install; a `ModelValidationClass` that
+   isn't a resolvable module path must fail loud once and then skip silently, never retry-loop.
+4. **Respect the A-4 seam** (`docs/internal/ERP_BACKEND_SEPARATION.md`): a model-validator plugin GATES,
+   it must never derive a posting value or write GL state. State this constraint explicitly in whatever
+   spec/README a Phase-E bundle author reads — it is not enforced by any type system here, only by
+   documented discipline, and a plugin author has no other way to learn it.
+5. **Does this want its own kernel_ops op_type**, e.g. `MODELVAL_AUTOINSTALL`, distinct from `PLUGIN_INSTALL`,
+   so the audit log can tell "an admin clicked install" apart from "the AD table drove this"? Additive,
+   same pattern as Phase B — decide before writing the bridge, not after.
+
+**Do not start implementation until questions 1-5 have written answers in this file.** This phase is
+small in code (a bridge function, plausibly under 40 lines) and easy to get structurally wrong in a way
+that either duplicates Phase D's UI-driven flow uselessly or quietly weakens the signed+reversible
+guarantee Phase D already established. Read `docs/HolyGrail.md` in full, `docs/internal/ERP_BACKEND_SEPARATION.md`
+§A-4, and `erp/plugin_registry.js`'s actual lifecycle code (not just this doc's summary of it) before
+proposing an implementation.
