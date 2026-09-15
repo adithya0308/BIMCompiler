@@ -278,3 +278,51 @@ that either duplicates Phase D's UI-driven flow uselessly or quietly weakens the
 guarantee Phase D already established. Read `docs/HolyGrail.md` in full, `docs/internal/ERP_BACKEND_SEPARATION.md`
 §A-4, and `erp/plugin_registry.js`'s actual lifecycle code (not just this doc's summary of it) before
 proposing an implementation.
+
+### Answers (2026-09-15, resolved by direct investigation before implementation)
+
+**Q2 — idempotency: RESOLVED, and it changes the design.** `plugin_registry.js:178` — `startBundle` on an
+already-ACTIVE id is a safe no-op (`return {id, state, opId: null}`). But `plugin_registry.js:162` —
+`installBundle` **throws** `'plugin already installed: ' + manifest.id'` if called again on the same id.
+It is NOT safe to call blindly every boot. The bridge MUST either: (a) import the manifest first,
+`store.get(manifest.id)` (needs `PluginRegistry`'s internal `store` — check if it's exposed; if not,
+expose a read-only `isInstalled(id)` as part of this phase), and skip `installBundle` when already
+present, calling only `startBundle`; or (b) wrap `installBundle` in try/catch and treat exactly this one
+error message as expected/ignorable. (a) is more robust — string-matching an error message is fragile.
+
+**Q3 — EntityType scoping: the speculation in this file was WRONG, corrected by real data.** Queried the
+actual 3 rows (`build/erp/ad_full.db`):
+```
+50000 | Libero Manufacturing Management | org.eevolution.model.LiberoValidator | EE01
+50004 | Fixed Assets                     | org.idempiere.fa.model.ModelValidator | D
+200002| Product Price                    | org.adempiere.model.ProductPriceValidator | D
+```
+`EntityType` is `D` (core Dictionary) for 2 of 3, `EE01` (a vendor module code) for the third — **none are
+`U`** (user/custom). EntityType does NOT cleanly separate "safe to auto-install" from "vendor Java body we
+never ported." **Drop EntityType-based gating entirely.** Gate purely on whether `ModelValidationClass`
+resolves to a real, locally-present bundle (a file under `erp/plugins/` or a resolvable URL) — these 3
+real rows will always fail that check (their Java bodies are named-deferred, no JS port exists or is
+planned), so they naturally never install, no special-casing needed. Log the failure ONCE per row per
+session, never retry-loop.
+
+**Q4 — RESOLVED, mechanical.** Whatever file documents how to author a bundle for this bridge (README in
+`erp/plugins/`, or a new section in this file) must state the A-4 seam explicitly: a model-validator
+bundle gates (may return an error string to block save/complete); it must never write GL state or derive
+a posting value. Copy this sentence into that doc verbatim — don't paraphrase it thinner.
+
+**Q5 — RESOLVED.** Add `MODELVAL_AUTOINSTALL` to `kernel_ops.js`'s `op_type` enum comment (additive, no
+schema change, same pattern as Phase B's `PLUGIN_*`). Use it instead of `PLUGIN_INSTALL`/`PLUGIN_START`
+when the bridge itself triggers install/start from an AD row, so the audit log can tell "admin pasted a
+URL" apart from "the AD table drove this" — grep `§MODELVAL_AUTOINSTALL` should be sufficient to answer
+"did this come from the dictionary" without cross-referencing timestamps.
+
+**Q1 — the one real judgment call, not fully resolved by investigation, proceeding on a stated default.**
+Recommendation: the AD row **proposes**, it does not **auto-approve**. Auto-install only for a row that
+has ALSO been explicitly enabled through the existing enable/disable surface in `plugin_release.js` —
+i.e. add the AD_ModelValidator row's candidate bundle to the Plugin Management list in a PENDING/proposed
+state, require the same explicit enable click Phase D already requires for a pasted URL, and only THEN
+does the boot-time bridge call `startBundle`. This preserves "foreign imperative code is a plugin, signed
++ reversible" rather than adding a second, weaker install path that bypasses it. **This is a product
+decision, not an implementation detail — if red1 wants true zero-click auto-install (AD row alone is
+sufficient, no separate approval), say so explicitly before or during the implementation session; the
+agent should default to the approval-gated version above and flag it rather than assume zero-click.**
