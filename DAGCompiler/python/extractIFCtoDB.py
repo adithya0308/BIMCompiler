@@ -46,6 +46,7 @@ Usage:
 
 import argparse
 import hashlib
+import json
 import math
 import os
 import datetime as _dt
@@ -310,6 +311,19 @@ CREATE TABLE IF NOT EXISTS rel_material_layer_set (
     offset_from_reference_line REAL,
     provenance TEXT DEFAULT 'ifc:IfcMaterialLayerSetUsage'
 );
+-- Authored reference frames and pre-compilation envelopes for fail-closed proof.
+-- These tables belong to this extracted reference DB, never the ERP/catalog.
+CREATE TABLE IF NOT EXISTS material_layer_frames (
+    element_guid TEXT PRIMARY KEY,
+    frame_json TEXT,
+    provenance TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS layer_geometry_source (
+    element_guid TEXT PRIMARY KEY,
+    vertices BLOB NOT NULL,
+    faces BLOB NOT NULL,
+    contract_json TEXT NOT NULL
+);
 -- §LOD400-LAYERS-REAL (prompts/RESUME_MODELLER_LOD400_REAL_GEOMETRY.md §THE FIX item 2, CALL MADE
 -- 2026-07-30: option (b)) — per-layer slab index into the layered mesh stored behind geometry_hash.
 -- The mesh a multi-layer element's hash resolves is a CONCATENATION of N layer slabs, compiled by
@@ -491,18 +505,36 @@ def bbox_from_placement(elem):
 # ---------------------------------------------------------------------------
 
 def get_storey_for_element(element):
-    """Walk IFC containment to find storey name."""
-    try:
-        for rel in element.ContainedInStructure:
-            container = rel.RelatingStructure
-            if container.is_a("IfcBuildingStorey"):
-                return container.Name
-            if hasattr(container, "Decomposes"):
-                for dec in container.Decomposes:
-                    if dec.RelatingObject.is_a("IfcBuildingStorey"):
-                        return dec.RelatingObject.Name
-    except (AttributeError, TypeError):
-        pass
+    """Resolve only authored containment, decomposition and opening-host paths."""
+    pending = [element]
+    visited = set()
+    storeys = {}
+    while pending:
+        obj = pending.pop()
+        key = obj.id()
+        if key in visited:
+            continue
+        visited.add(key)
+        if obj.is_a("IfcBuildingStorey"):
+            storeys[key] = obj
+            continue
+        parents = []
+        for attr, target in (("ContainedInStructure", "RelatingStructure"),
+                             ("Decomposes", "RelatingObject"),
+                             ("Nests", "RelatingObject")):
+            for rel in getattr(obj, attr, ()) or ():
+                parent = getattr(rel, target, None)
+                if parent is not None:
+                    parents.append(parent)
+        if obj.is_a("IfcOpeningElement"):
+            for rel in getattr(obj, "VoidsElements", ()) or ():
+                parents.append(rel.RelatingBuildingElement)
+        pending.extend(sorted(parents, key=lambda parent: parent.id(), reverse=True))
+    if len(storeys) == 1:
+        return next(iter(storeys.values())).Name or "Unknown"
+    if len(storeys) > 1:
+        ids = sorted(getattr(obj, "GlobalId", str(key)) for key, obj in storeys.items())
+        print(f"  STOREY-UNRESOLVED guid={element.GlobalId}: conflicting storeys {ids}")
     return "Unknown"
 
 
@@ -754,6 +786,43 @@ def extract_material_layers(ifc_file):
     return rows
 
 
+def material_layer_frame(obj, direction, scale):
+    """Layer-reference to element-local metres; unsupported representations refuse.
+
+    AXIS2 wall layering uses the element reference axes. AXIS3 planar
+    extrusions use their authored swept-solid Position (not their bbox).
+    Element ObjectPlacement is already factored out of the stored local mesh.
+    """
+    if obj.is_a("IfcTypeProduct"):
+        return None, "ifc:type-definition"
+    if obj.is_a("IfcWall") and direction == "AXIS2":
+        return np.eye(4).tolist(), "ifc:wall-element-frame"
+    if direction != "AXIS3" or not any(
+            obj.is_a(t) for t in ("IfcSlab", "IfcPlate", "IfcCovering", "IfcRoof")):
+        return None, "unresolved:unsupported-layer-reference"
+    bodies = [rep for rep in getattr(getattr(obj, "Representation", None),
+                                    "Representations", ())
+              if rep.RepresentationIdentifier == "Body"]
+    items = [item for rep in bodies for item in rep.Items]
+    if len(items) != 1:
+        return None, "unresolved:ambiguous-body-items"
+    item = items[0]
+    seen = set()
+    while item.is_a("IfcBooleanClippingResult"):
+        if item.id() in seen:
+            return None, "unresolved:cyclic-body"
+        seen.add(item.id())
+        item = item.FirstOperand
+    if item.is_a() != "IfcExtrudedAreaSolid":
+        return None, "unresolved:unsupported-body"
+    if tuple(item.ExtrudedDirection.DirectionRatios) != (0.0, 0.0, 1.0):
+        return None, "unresolved:nonperpendicular-extrusion"
+    import ifcopenshell.util.placement
+    frame = ifcopenshell.util.placement.get_axis2placement(item.Position)
+    frame[:3, 3] *= scale
+    return frame.tolist(), f"ifc:IfcExtrudedAreaSolid.Position:#{item.id()}"
+
+
 def extract_rel_material_layer_set(ifc_file):
     """§LOD400-ENVELOPE — extract the element→layer-set edge from IfcMaterialLayerSetUsage.
 
@@ -793,7 +862,11 @@ def extract_rel_material_layer_set(ifc_file):
             guid = getattr(obj, 'GlobalId', None)
             if not guid:
                 continue
+            frame, frame_source = material_layer_frame(obj, direction, scale)
             rows.append({
+                'frame': frame,
+                'frame_source': frame_source,
+                'provenance': 'ifc:' + mat.is_a(),
                 'element_guid': guid,
                 'layer_set_name': ls.LayerSetName,
                 'layer_count': len(layers),
@@ -812,11 +885,13 @@ def write_rel_material_layer_set(conn, rows):
         conn.execute(
             "INSERT OR REPLACE INTO rel_material_layer_set "
             "(element_guid, layer_set_name, layer_count, total_thickness_m, "
-            "layer_set_direction, direction_sense, offset_from_reference_line) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "layer_set_direction, direction_sense, offset_from_reference_line, provenance) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (r['element_guid'], r['layer_set_name'], r['layer_count'],
              r['total_thickness_m'], r['layer_set_direction'],
-             r['direction_sense'], r['offset_from_reference_line']))
+             r['direction_sense'], r['offset_from_reference_line'], r['provenance']))
+        conn.execute("INSERT OR REPLACE INTO material_layer_frames VALUES (?,?,?)",
+                     (r['element_guid'], json.dumps(r['frame']), r['frame_source']))
     conn.commit()
 
 
@@ -1171,21 +1246,10 @@ def _slice_slab(verts, faces, k, lo, hi, ymin, ymax, vol_sign):
 
 
 def _layer_intervals(off, sense, thicknesses, ymin, ymax, guid, axis_vals=None):
-    """Authored layer intervals along the layer axis + coverage classification against the body span.
+    """Intervals in the authored reference frame; only whole-layer clips allowed.
 
-    Two deterministic anchorings, both pure authored data (measured on Duplex 2026-07-30):
-      ABSOLUTE — boundaries b_j = OffsetFromReferenceLine ± cumsum(thickness). Valid when BOTH body
-        faces land on authored boundaries (±LAYER_TOL). The body may cover a contiguous WHOLE-layer
-        subset (party walls: an authored half-space clip trims the neighbour-side finish layers,
-        whose material belongs to the neighbour's body). A clipped-away layer gets NO index row —
-        the remaining slabs are the element's own real material and ship as LOD400 (user exception
-        ruling 2026-07-31: the no-fallback rule bans invented content, not honest whole-layer
-        subsets). An empty ROW is still forbidden (face_count>0 on every row that exists, row 33).
-      RELATIVE — body extent == authored total (±LAYER_TOL): boundaries anchor at the body face the
-        DirectionSense stacks from (MlsBase). Needed where the exporter left the usage offset at the
-        reference geometry while placing the body elsewhere in the local frame (Duplex ceilings:
-        offset=0, body at z≈2.6, extent==total).
-    Anything matching neither is REFUSED. Returns list of (lo, hi, covered) per layer sequence.
+    No re-anchoring to mesh bounds: a shifted or rotated body must supply its
+    IFC reference frame. Duplicate boundaries from zero layers remain coincident.
     """
     sign = 1.0 if sense == "POSITIVE" else -1.0
     cum = np.concatenate([[0.0], np.cumsum(thicknesses)])
@@ -1218,6 +1282,9 @@ def _layer_intervals(off, sense, thicknesses, ymin, ymax, guid, axis_vals=None):
         ivals = []
         for j in range(len(thicknesses)):
             lo, hi = sorted((bounds[j], bounds[j + 1]))
+            if thicknesses[j] == 0:
+                ivals.append((lo, lo, False))
+                continue
             if hi <= ymin + LAYER_TOL or lo >= ymax - LAYER_TOL:
                 ivals.append((lo, hi, False))          # wholly outside the body
             elif lo >= ymin - LAYER_TOL and hi <= ymax + LAYER_TOL:
@@ -1234,21 +1301,64 @@ def _layer_intervals(off, sense, thicknesses, ymin, ymax, guid, axis_vals=None):
             ivals = classify(b_abs)
             if ivals is not None:
                 return ivals
-    extent = ymax - ymin
-    total = float(cum[-1])
-    if abs(extent - total) < LAYER_TOL:
-        anchor = ymin if sense == "POSITIVE" else ymax
-        ivals = classify(anchor + sign * cum)
-        if ivals is not None:
-            return ivals
     raise LayerRefusal(
-        f"body span [{ymin:.4f},{ymax:.4f}] (extent {extent:.4f}) does not align with the authored "
-        f"layer set (total {total:.4f}, offset {off}, sense {sense}) under absolute OR relative "
+        f"body span [{ymin:.4f},{ymax:.4f}] (extent {ymax-ymin:.4f}) does not align with the authored "
+        f"layer set (total {float(cum[-1]):.4f}, offset {off}, sense {sense}) in the authored reference frame; no bbox-relative "
         f"anchoring — guid={guid}")
 
 
+def _layer_plan(conn, guid, usage, env_v, env_f):
+    """Validate source data and plan intervals in its explicit reference frame."""
+    lsn, lc, tot, direction, sense, off = usage
+    if direction not in _LAYER_AXIS or sense not in ("POSITIVE", "NEGATIVE"):
+        raise LayerRefusal("missing/unknown layer direction or sense")
+    if off is None or not math.isfinite(off):
+        raise LayerRefusal("missing/nonfinite authored offset")
+    lay = conn.execute(
+        "SELECT sequence, material_name, thickness_m FROM material_layers "
+        "WHERE layer_set_name=? ORDER BY sequence", (lsn,)).fetchall()
+    if len(lay) != lc or [r[0] for r in lay] != list(range(lc)):
+        raise LayerRefusal(f"material_layers sequence/count differs from authored layer_count={lc}")
+    if any(t is None or not math.isfinite(t) or t < 0 for _, _, t in lay):
+        raise LayerRefusal("missing, negative or nonfinite layer thickness")
+    if tot is None or not math.isfinite(tot) or tot <= 0:
+        raise LayerRefusal("authored total must be finite and positive")
+    if abs(sum(t for _, _, t in lay) - tot) > LAYER_SUM_TOL:
+        raise LayerRefusal("authored layer thicknesses do not sum to total")
+    fr = conn.execute("SELECT frame_json, provenance FROM material_layer_frames "
+                      "WHERE element_guid=?", (guid,)).fetchone()
+    if fr is None or not fr[1].startswith("ifc:"):
+        raise LayerRefusal("missing/unresolved authored layer reference frame")
+    try:
+        frame = np.asarray(json.loads(fr[0]), dtype=float)
+    except (ValueError, TypeError) as exc:
+        raise LayerRefusal("invalid layer reference frame") from exc
+    if (frame.shape != (4, 4) or not np.isfinite(frame).all()
+            or not np.allclose(frame[3], [0, 0, 0, 1], rtol=0, atol=1e-9)
+            or not np.allclose(frame[:3, :3].T @ frame[:3, :3], np.eye(3),
+                               rtol=0, atol=1e-9)
+            or abs(np.linalg.det(frame[:3, :3]) - 1) > 1e-9):
+        raise LayerRefusal("layer frame is not a finite rigid right-handed transform")
+    if (not len(env_v) or not len(env_f) or not np.isfinite(env_v).all()
+            or env_f.min() < 0 or env_f.max() >= len(env_v)):
+        raise LayerRefusal("invalid envelope vertices/faces")
+    local = (env_v - frame[:3, 3]) @ frame[:3, :3]
+    verts, faces = _weld_mesh(local, env_f)
+    _assert_watertight(faces, "envelope")
+    faces = _orient_coherently(verts, faces)
+    volume = _mesh_signed_volume(verts, faces)
+    if not math.isfinite(volume) or abs(volume) < 1e-12:
+        raise LayerRefusal("envelope has zero/nonfinite volume")
+    k = _LAYER_AXIS[direction]
+    ymin, ymax = float(verts[:, k].min()), float(verts[:, k].max())
+    ivals = _layer_intervals(off, sense, [t for _, _, t in lay],
+                             ymin, ymax, guid, axis_vals=np.unique(verts[:, k]))
+    contract = json.dumps([list(usage), fr, lay], sort_keys=True)
+    return verts, faces, frame, lay, ivals, volume, k, ymin, ymax, contract
+
+
 def compile_layer_geometry(conn, geo_conn=None):
-    """§LOD400-LAYERS-REAL main entry: rewrite every multi-layer element's envelope mesh as N
+    """§LOD400-LAYERS-REAL main entry: rewrite every supported layered element's envelope mesh as N
     concatenated layer slabs + component_geometry_layers index rows (option (b), CALL MADE 2026-07-30).
 
     Dedup safety: a geometry_hash may be shared by several guids. The hash is rewritten IN PLACE only
@@ -1268,7 +1378,7 @@ def compile_layer_geometry(conn, geo_conn=None):
                r.offset_from_reference_line
         FROM rel_material_layer_set r
         JOIN element_instances i ON i.guid = r.element_guid
-        WHERE r.layer_count > 1""").fetchall()
+        WHERE r.layer_count > 0 ORDER BY r.element_guid""").fetchall()
     already = {h for (h,) in store.execute(
         "SELECT DISTINCT geometry_hash FROM component_geometry_layers")}
 
@@ -1294,7 +1404,10 @@ def compile_layer_geometry(conn, geo_conn=None):
             "SELECT guid FROM element_instances WHERE geometry_hash = ?", (ghash,))]
         sigs = {}
         for (guid, _h, lsn, lc, tot, direction, sense, off) in members:
-            sigs.setdefault((lsn, lc, tot, direction, sense, off), []).append(guid)
+            fr = conn.execute("SELECT frame_json FROM material_layer_frames "
+                              "WHERE element_guid=?", (guid,)).fetchone()
+            sigs.setdefault((lsn, lc, tot, direction, sense, off,
+                             fr[0] if fr else ""), []).append(guid)
         plain = [g for g in sharers if g not in {m[0] for m in members}]
         in_place = (len(sigs) == 1 and not plain)
 
@@ -1307,38 +1420,12 @@ def compile_layer_geometry(conn, geo_conn=None):
         env_v64 = np.frombuffer(row[0], dtype=np.float32).reshape(-1, 3).astype(np.float64)
         env_f = np.frombuffer(row[1], dtype=np.int32).reshape(-1, 3)
 
-        for (lsn, lc, tot, direction, sense, off), guids in sorted(sigs.items()):
+        for (lsn, lc, tot, direction, sense, off, _frame_key), guids in sorted(sigs.items(), key=lambda x: repr(x[0])):
             try:
-                if direction not in _LAYER_AXIS:
-                    raise LayerRefusal(f"LayerSetDirection missing/unknown ({direction!r})")
-                if sense not in ("POSITIVE", "NEGATIVE"):
-                    raise LayerRefusal(f"DirectionSense missing/unknown ({sense!r})")
-                if tot is None or tot <= 0:
-                    raise LayerRefusal(f"authored total thickness missing/zero ({tot!r})")
-                lay_rows = conn.execute(
-                    "SELECT sequence, material_name, thickness_m FROM material_layers "
-                    "WHERE layer_set_name = ? ORDER BY sequence", (lsn,)).fetchall()
-                if len(lay_rows) != lc:
-                    raise LayerRefusal(f"material_layers has {len(lay_rows)} rows for set {lsn!r} "
-                                       f"but the authored usage declares layer_count={lc}")
-                if any(t is None or t <= 0 for (_s, _m, t) in lay_rows):
-                    raise LayerRefusal(f"a layer thickness is missing/zero in set {lsn!r}")
-                thicknesses = [float(t) for (_s, _m, t) in lay_rows]
-                if abs(sum(thicknesses) - float(tot)) > LAYER_SUM_TOL:
-                    raise LayerRefusal(f"authored layer thicknesses sum {sum(thicknesses):.6f} != "
-                                       f"authored total {tot:.6f} for set {lsn!r}")
-
-                verts, faces = _weld_mesh(env_v64, env_f)
-                _assert_watertight(faces, "envelope")
-                faces = _orient_coherently(verts, faces)
-                env_vol = _mesh_signed_volume(verts, faces)
-                if abs(env_vol) < 1e-12:
-                    raise LayerRefusal("envelope has zero volume")
-                k = _LAYER_AXIS[direction]
-                ymin = float(verts[:, k].min())
-                ymax = float(verts[:, k].max())
-                ivals = _layer_intervals(off, sense, thicknesses, ymin, ymax, guids[0],
-                                         axis_vals=np.unique(verts[:, k]))
+                usage = (lsn, lc, tot, direction, sense, off)
+                (verts, faces, frame, lay_rows, ivals, env_vol, k,
+                 ymin, ymax, contract) = _layer_plan(
+                    conn, guids[0], usage, env_v64, env_f)
 
                 buf_v = []
                 buf_f = []
@@ -1348,6 +1435,9 @@ def compile_layer_geometry(conn, geo_conn=None):
                 vert_cursor = 0
                 clipped = []
                 for seq, ((lo, hi, covered), (_s, mat, th)) in enumerate(zip(ivals, lay_rows)):
+                    if th == 0:
+                        print(f"  LAYER-NONVOLUMETRIC guid={guids[0]} seq={seq} thickness=0")
+                        continue
                     if not covered:
                         # User exception ruling 2026-07-31 (row 33 addendum): a whole layer the
                         # authored geometry clips away (e.g. a half-space trim handing that layer
@@ -1382,7 +1472,8 @@ def compile_layer_geometry(conn, geo_conn=None):
                 if not layer_rows_out:
                     raise LayerRefusal(
                         f"every layer of set {lsn!r} lies outside the body — nothing to compile")
-                new_vblob = np.vstack(buf_v).astype(np.float32).tobytes()
+                new_vblob = (np.vstack(buf_v) @ frame[:3, :3].T
+                             + frame[:3, 3]).astype(np.float32).tobytes()
                 new_fblob = np.vstack(buf_f).astype(np.int32).tobytes()
                 v_count = len(new_vblob) // 12
                 f_count = len(new_fblob) // 12
@@ -1401,7 +1492,8 @@ def compile_layer_geometry(conn, geo_conn=None):
                         conn.execute("UPDATE base_geometries SET vertex_count=?, face_count=? "
                                      "WHERE geometry_hash=?", (v_count, f_count, ghash))
                 else:
-                    write_hash = geometry_hash(new_vblob, new_fblob)
+                    write_hash = hashlib.sha256(new_vblob + new_fblob
+                                                + contract.encode()).hexdigest()[:16]
                     if geo_conn is not None:
                         store.execute("INSERT OR IGNORE INTO component_geometries "
                                       "(geometry_hash, vertices, faces, normals, vertex_count, face_count) "
@@ -1428,6 +1520,12 @@ def compile_layer_geometry(conn, geo_conn=None):
                                   "face_start, face_count) VALUES (?,?,?,?,?,?)",
                                   [(write_hash, seq, mat, th, fs, fc)
                                    for (seq, mat, th, fs, fc) in layer_rows_out])
+                for guid in guids:
+                    # Store the unmodified envelope, not the newly layered buffer.
+                    # This is extractor-owned verification evidence in the reference DB.
+                    guid_plan = _layer_plan(conn, guid, usage, env_v64, env_f)
+                    conn.execute("INSERT OR REPLACE INTO layer_geometry_source VALUES (?,?,?,?)",
+                                 (guid, row[0], row[1], guid_plan[-1]))
                 compiled_elems += len(guids)
                 compiled_hashes += 1
                 total_slabs += sum(1 for r in layer_rows_out if r[4] > 0)
@@ -1453,10 +1551,18 @@ def compile_layer_geometry(conn, geo_conn=None):
     return compiled_elems, refusals, n_already
 
 
+def _canonical_triangles(vertices, faces):
+    # Representation-independent vertex/triangle ordering for the same sliced mesh.
+    return np.asarray(sorted(tuple(sorted(tuple(vertices[i]) for i in tri))
+                             for tri in faces), dtype=float)
+
+
 def verify_layer_geometry(conn, geo_conn=None):
-    """Cross-check the layered store against the authored tables. Any inconsistency is a loud,
-    counted §LAYER-VERIFY-FAIL — this is the falsification surface the witness attacks (delete one
-    material_layers row: the 7-layer usage must hard-fail, never silently ship 6 slabs)."""
+    """Fail closed against original envelope, semantic rows and authored frame.
+
+    Reconstruct expected slices from retained source evidence, then compare each
+    indexed geometric layer. Index presence or equal total volume alone cannot pass.
+    """
     store = geo_conn if geo_conn is not None else conn
     blob_table = "component_geometries" if geo_conn is not None else "base_geometries"
     fails = 0
@@ -1464,72 +1570,114 @@ def verify_layer_geometry(conn, geo_conn=None):
     def bad(guid, reason):
         nonlocal fails
         fails += 1
-        print(f"  §LAYER-VERIFY-FAIL guid={guid} — {reason}")
+        print(f"  {chr(167)}LAYER-VERIFY-FAIL guid={guid} -- {reason}")
+        print(f"  {chr(167)}ILLEGAL_LOD_FALLBACK guid={guid} -- unqualified layer geometry")
 
-    for (guid, ghash, lsn, lc, tot) in conn.execute("""
-            SELECT r.element_guid, i.geometry_hash, r.layer_set_name, r.layer_count,
-                   r.total_thickness_m
+    try:
+        # Probe mandatory tables even when the usage population is empty.
+        for query in (
+                "SELECT sequence,material_name,thickness_m FROM material_layers LIMIT 0",
+                "SELECT element_guid,frame_json,provenance FROM material_layer_frames LIMIT 0",
+                "SELECT element_guid,vertices,faces,contract_json FROM layer_geometry_source LIMIT 0"):
+            conn.execute(query)
+        store.execute("SELECT geometry_hash,layer_seq,material_name,thickness_m,"
+                      "face_start,face_count FROM component_geometry_layers LIMIT 0")
+        store.execute(f"SELECT geometry_hash,vertices,faces,vertex_count,face_count "
+                      f"FROM {blob_table} LIMIT 0")
+        elems = conn.execute("""
+            SELECT r.element_guid,i.geometry_hash,r.layer_set_name,r.layer_count,
+                   r.total_thickness_m,r.layer_set_direction,r.direction_sense,
+                   r.offset_from_reference_line
             FROM rel_material_layer_set r
-            JOIN element_instances i ON i.guid = r.element_guid
-            WHERE r.layer_count > 1""").fetchall():
-        lay = conn.execute("SELECT sequence, material_name, thickness_m FROM material_layers "
-                           "WHERE layer_set_name=? ORDER BY sequence", (lsn,)).fetchall()
-        if len(lay) != lc:
-            bad(guid, f"material_layers has {len(lay)} rows for set {lsn!r} but authored "
-                      f"layer_count={lc} — refusing to ship {len(lay)} slabs as {lc} layers")
-            continue
-        if any(t is None for (_s, _m, t) in lay):
-            bad(guid, f"NULL thickness in set {lsn!r}")
-            continue
-        if abs(sum(t for (_s, _m, t) in lay) - (tot or 0.0)) > LAYER_SUM_TOL:
-            bad(guid, f"layer thicknesses sum {sum(t for (_s,_m,t) in lay):.6f} != authored total "
-                      f"{tot} for set {lsn!r}")
-            continue
-        idx = store.execute("SELECT layer_seq, material_name, thickness_m, face_start, face_count "
-                            "FROM component_geometry_layers WHERE geometry_hash=? ORDER BY layer_seq",
-                            (ghash,)).fetchall()
-        if not idx:
-            bad(guid, f"hash {ghash} carries no layer rows, authored layer_count={lc} — "
-                      f"element still ships as an envelope")
-            continue
-        if len(idx) > lc:
-            bad(guid, f"hash {ghash} carries {len(idx)} layer rows, MORE than authored "
-                      f"layer_count={lc}")
-            continue
-        # Rows may be a SUBSET of the authored set (clipped-away layers have no row — user
-        # exception ruling 2026-07-31), but every row that exists must MATCH the authored layer
-        # at its sequence and carry real geometry.
-        authored = {aseq: (amat, ath) for (aseq, amat, ath) in lay}
-        ok = True
-        cursor = 0
-        for (seq, mat, th, fs, fc) in idx:
-            if fc is None or fc <= 0:
-                # Row 33 falsification surface: re-introducing an empty row must go RED here.
-                bad(guid, f"layer {seq} ({mat!r}) has face_count={fc} — an empty slab is a "
-                          f"refusal, not a row (row 33)")
-                ok = False
-                break
-            if seq not in authored:
-                bad(guid, f"layer row seq={seq} does not exist in authored set {lsn!r}")
-                ok = False
-                break
-            amat, ath = authored[seq]
-            if abs(th - ath) > 1e-9 or (mat or "") != (amat or ""):
-                bad(guid, f"layer row {seq} ({mat!r},{th}) != authored ({amat!r},{ath})")
-                ok = False
-                break
-            if fs != cursor:
-                bad(guid, f"face ranges do not tile: layer {seq} starts at {fs}, expected {cursor}")
-                ok = False
-                break
-            cursor += fc
-        if not ok:
-            continue
-        frow = store.execute(f"SELECT face_count FROM {blob_table} WHERE geometry_hash=?",
-                             (ghash,)).fetchone()
-        if frow is None or frow[0] != cursor:
-            bad(guid, f"layer face ranges sum {cursor} != stored face_count "
-                      f"{frow[0] if frow else 'MISSING'} for hash {ghash}")
+            LEFT JOIN element_instances i ON i.guid=r.element_guid
+            ORDER BY r.element_guid""").fetchall()
+        for guid, ghash, *usage in elems:
+            try:
+                frame_record = conn.execute(
+                    "SELECT provenance FROM material_layer_frames WHERE element_guid=?",
+                    (guid,)).fetchone()
+                if ghash is None and frame_record and frame_record[0] == "ifc:type-definition":
+                    # A material association to a type has no occurrence mesh to slice.
+                    # Its semantic rows remain; this is not an omitted element instance.
+                    lsn, lc, total, *_ = usage
+                    layers = conn.execute(
+                        "SELECT sequence,thickness_m FROM material_layers "
+                        "WHERE layer_set_name=? ORDER BY sequence", (lsn,)).fetchall()
+                    if (len(layers) != lc or [seq for seq, _ in layers] != list(range(lc))
+                            or any(t is None or not math.isfinite(t) or t < 0 for _, t in layers)
+                            or total is None or not math.isfinite(total)
+                            or abs(sum(t for _, t in layers) - total) > LAYER_SUM_TOL):
+                        raise LayerRefusal("invalid type-definition semantic layers")
+                    print(f"  LAYER-TYPE-DEFINITION guid={guid}: no occurrence geometry")
+                    continue
+                src = conn.execute("SELECT vertices,faces,contract_json "
+                                   "FROM layer_geometry_source WHERE element_guid=?",
+                                   (guid,)).fetchone()
+                if src is None or ghash is None:
+                    raise LayerRefusal("missing original envelope/instance verification evidence")
+                ev = np.frombuffer(src[0], np.float32).reshape(-1, 3).astype(float)
+                ef = np.frombuffer(src[1], np.int32).reshape(-1, 3)
+                (verts, faces, frame, lay, ivals, env_vol, k,
+                 ymin, ymax, contract) = _layer_plan(conn, guid, usage, ev, ef)
+                if contract != src[2]:
+                    raise LayerRefusal("authored layer/frame contract differs from retained source")
+                idx = store.execute(
+                    "SELECT layer_seq,material_name,thickness_m,face_start,face_count "
+                    "FROM component_geometry_layers WHERE geometry_hash=? ORDER BY layer_seq",
+                    (ghash,)).fetchall()
+                required = [seq for (seq, _, th), (_, _, covered) in zip(lay, ivals)
+                            if th > 0 and covered]
+                if [x[0] for x in idx] != required:
+                    raise LayerRefusal(f"required positive layer sequences {required}, "
+                                       f"got {[x[0] for x in idx]}")
+                row = store.execute(f"SELECT vertices,faces,vertex_count,face_count FROM "
+                                    f"{blob_table} WHERE geometry_hash=?", (ghash,)).fetchone()
+                if row is None or row[0] is None or row[1] is None:
+                    raise LayerRefusal("missing compiled mesh")
+                av = np.frombuffer(row[0], np.float32).reshape(-1, 3).astype(float)
+                af = np.frombuffer(row[1], np.int32).reshape(-1, 3)
+                if (len(av) != row[2] or len(af) != row[3] or not np.isfinite(av).all()
+                        or not len(af) or af.min() < 0 or af.max() >= len(av)):
+                    raise LayerRefusal("invalid compiled mesh counts/indices")
+                cursor = 0
+                volume = 0.0
+                for seq, mat, th, fs, fc in idx:
+                    if fc is None or fc <= 0:
+                        raise LayerRefusal(f"layer {seq} has face_count={fc}")
+                    if fs != cursor or fs + fc > len(af):
+                        raise LayerRefusal("layer face ranges do not tile buffer")
+                    _, amat, ath = lay[seq]
+                    if (th is None or not math.isfinite(th) or th != ath or mat != amat):
+                        raise LayerRefusal(f"layer {seq} material/thickness differs from source")
+                    lo, hi, _ = ivals[seq]
+                    sv, sf = _slice_slab(verts, faces, k, max(lo, ymin), min(hi, ymax),
+                                         ymin, ymax, 1.0 if env_vol > 0 else -1.0)
+                    expected = (sv @ frame[:3, :3].T + frame[:3, 3]).astype(np.float32)
+                    actual_faces = af[fs:fs + fc]
+                    if (len(sf) != fc or not np.allclose(
+                            _canonical_triangles(expected, sf),
+                            _canonical_triangles(av, actual_faces),
+                            rtol=0, atol=LAYER_TOL)):
+                        raise LayerRefusal(f"layer {seq} does not cover its authored region")
+                    local = (av - frame[:3, 3]) @ frame[:3, :3]
+                    vv, ff = _weld_mesh(local, actual_faces)
+                    _assert_watertight(ff, f"layer {seq}")
+                    used = vv[np.unique(ff)]
+                    if abs(float(np.ptp(used[:, k])) - th) > LAYER_TOL:
+                        raise LayerRefusal(f"layer {seq} extent differs from thickness")
+                    vol = _mesh_signed_volume(vv, ff)
+                    if not math.isfinite(vol) or vol * env_vol <= 0:
+                        raise LayerRefusal(f"layer {seq} inverted/zero volume")
+                    volume += vol
+                    cursor += fc
+                if cursor != len(af):
+                    raise LayerRefusal("unindexed faces")
+                if abs(volume - env_vol) > max(1e-9, LAYER_VOL_RTOL * abs(env_vol)):
+                    raise LayerRefusal("layer union does not conserve envelope volume")
+            except (LayerRefusal, ValueError, TypeError, IndexError) as exc:
+                bad(guid, str(exc))
+    except sqlite3.Error as exc:
+        bad("SCHEMA", str(exc))
     return fails
 
 
@@ -2731,49 +2879,11 @@ def extract_reference(ifc_path, output_path, classes=None, exclude=None,
                f"{void_consumed} hosts consumed by own opening; "
                f"{total_fills - orphan}/{total_fills} fillings have geometry, {orphan} orphaned")
 
-        # P10: LOD400_ENVELOPE — §LOD400-ENVELOPE, user directive 2026-07-29/30 ("the NO FALLBACK rule must
-        # never be broken.. simple throws exception and hard fail"). An element the SOURCE authored as N
-        # material layers, shipped as ONE undifferentiated solid, is an ENVELOPE FALLBACK: non-LOD400
-        # content presented as the element's real geometry. Fidelity is owed to what the source authored,
-        # NOT to whatever the tessellator handed back — "GIGO" is not a defence when the layers are right
-        # there in the file. A red §PROOF exits non-zero (see main()), so this gate has teeth by design:
-        # it must stay RED until §LOD400-LAYERS-REAL ships per-layer geometry. Do NOT soften it to a
-        # warning, do NOT add a threshold, do NOT add a per-building exemption.
-        # §LOD400-LAYERS-REAL: an element is an envelope only if its (current) hash resolves NO
-        # compiled per-layer index rows at all. Rows may be FEWER than the authored layer_count
-        # (user exception ruling 2026-07-31: a layer clipped away by authored geometry has no row;
-        # the remaining slabs are the element's own real material — honest whole-layer subsets are
-        # LOD400, the no-fallback rule bans INVENTED content). Compiled elements pass; refused
-        # elements keep firing — that is the gate doing its job, not a bug.
-        try:
-            _lay_store = lib_conn if lib_conn else conn
-            _layered = dict(_lay_store.execute(
-                "SELECT geometry_hash, COUNT(*) FROM component_geometry_layers "
-                "GROUP BY geometry_hash").fetchall())
-            _multi = conn.execute("""
-                SELECT r.element_guid, r.layer_count, r.layer_set_name, i.geometry_hash
-                FROM rel_material_layer_set r
-                JOIN element_instances i ON i.guid = r.element_guid
-                WHERE r.layer_count > 1
-                ORDER BY r.layer_count DESC
-            """).fetchall()
-            multi_total = conn.execute(
-                "SELECT COUNT(*) FROM rel_material_layer_set WHERE layer_count > 1").fetchone()[0]
-            _offenders = [(g, n, s) for (g, n, s, h) in _multi if not _layered.get(h)]
-            envelope = len(_offenders)
-            worst = _offenders[:5]
-        except sqlite3.OperationalError:
-            envelope, multi_total, worst = 0, 0, []
-        if envelope:
-            print(f"  §ILLEGAL_LOD_FALLBACK {envelope} element(s) authored MULTI-LAYER are shipped as a "
-                  f"single envelope solid — non-LOD400 content standing in for real geometry.")
-            for g, n, name in worst:
-                print(f"      §ILLEGAL_LOD_FALLBACK guid={g} layers={n} set={name!r}")
-            print(f"      → fix at source: §LOD400-LAYERS-REAL (slice the envelope along the authored "
-                  f"LayerSetDirection at the authored thicknesses). Never render the envelope as real.")
-        _check("LOD400_ENVELOPE",
-               envelope == 0,
-               f"{envelope}/{multi_total} multi-layer elements shipped as an envelope solid")
+        # A layer index is not proof: verify source semantics, frames, required
+        # regions, material order and envelope conservation. SQL errors fail closed.
+        layer_failures = verify_layer_geometry(conn, lib_conn)
+        _check("LOD400_ENVELOPE", layer_failures == 0,
+               f"{layer_failures} layer verification failure(s)")
 
         # P6: MATERIALS — some materials found
         _check("MATERIALS",
